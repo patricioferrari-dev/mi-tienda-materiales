@@ -5,13 +5,15 @@ from streamlit_gsheets import GSheetsConnection
 # 1. CONFIGURACIÓN DE PÁGINA Y ESTILOS
 st.set_page_config(page_title="Sistema de Pedidos", page_icon="📦", layout="centered")
 
-# CSS para ocultar menús y dejar la interfaz limpia
+# CSS para ocultar menús y botones de desarrollo
 hide_style = """
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     .stDeployButton {display:none;}
+    /* Estilo para que los botones X se vean más compactos */
+    .stButton > button {padding: 2px 10px; border-radius: 5px;}
     </style>
     """
 st.markdown(hide_style, unsafe_allow_html=True)
@@ -54,7 +56,7 @@ except Exception:
 
 # --- LISTA DE MATERIALES ---
 st.title("📦 Formulario de Pedidos")
-st.success(f"👷 Técnico: **{st.session_state.email_usuario}**")
+st.info(f"👷 Técnico: **{st.session_state.email_usuario}**")
 
 materiales_disponibles = [
     "13008 CONTROL REMOTO PARA DECO SAGECOM DCWMI303. CON BOT",
@@ -86,15 +88,15 @@ materiales_disponibles = [
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
 
-# --- FORMULARIO DE AGREGAR ---
+# --- FORMULARIO DE CARGA ---
 with st.form("formulario_pedido", clear_on_submit=True):
-    col1, col2 = st.columns([2, 1])
-    with col1:
+    col_art, col_cant = st.columns([3, 1])
+    with col_art:
         seleccion = st.selectbox("Artículo:", materiales_disponibles)
-    with col2:
-        cantidad_str = st.text_input("Cantidad:", placeholder="0")
+    with col_cant:
+        cantidad_str = st.text_input("Cant:", placeholder="0")
     
-    if st.form_submit_button("➕ Agregar al pedido"):
+    if st.form_submit_button("➕ AGREGAR AL RESUMEN"):
         try:
             cantidad_num = int(cantidad_str)
             if cantidad_num > 0:
@@ -109,56 +111,58 @@ with st.form("formulario_pedido", clear_on_submit=True):
             else:
                 st.error("Mínimo 1")
         except ValueError:
-            st.error("Usa números")
+            st.error("Ingresa un número")
 
-# --- RESUMEN Y ELIMINACIÓN ---
+# --- RESUMEN CON BOTÓN DE ELIMINAR (X) ---
 if st.session_state.carrito:
-    st.subheader("🛒 Resumen del pedido")
-    df_pedido = pd.DataFrame(st.session_state.carrito)
-    st.table(df_pedido)
+    st.markdown("---")
+    st.subheader("🛒 Tu Pedido")
     
-    # NUEVA FUNCIONALIDAD: BORRAR ÍTEM ESPECÍFICO
-    with st.expander("🗑️ Quitar algún artículo"):
-        # Creamos una lista de etiquetas para el selector para que el técnico sepa cuál borrar
-        opciones_borrar = [f"{i}: {item['Articulo']} ({item['Cantidad']})" for i, item in enumerate(st.session_state.carrito)]
-        item_a_borrar = st.selectbox("Selecciona el artículo a eliminar:", opciones_borrar)
-        if st.button("❌ Eliminar seleccionado"):
-            # Extraemos el índice del texto (el número antes de los dos puntos)
-            indice = int(item_a_borrar.split(":")[0])
-            st.session_state.carrito.pop(indice)
+    # Encabezados de la tabla manual
+    h1, h2, h3 = st.columns([3, 1, 0.5])
+    h1.caption("**Artículo**")
+    h2.caption("**Cant.**")
+    h3.write("") # Espacio para la X
+
+    # Iteramos el carrito para crear las filas
+    for i, item in enumerate(st.session_state.carrito):
+        c1, c2, c3 = st.columns([3, 1, 0.5])
+        c1.write(f"{item['Codigo']} - {item['Articulo']}")
+        c2.write(f"{item['Cantidad']}")
+        # El botón de eliminar
+        if c3.button("❌", key=f"btn_{i}"):
+            st.session_state.carrito.pop(i)
             st.rerun()
 
-    # --- BOTONES DE ENVÍO ---
-    col_a, col_b = st.columns(2)
-    with col_a:
-        if st.button("🗑️ Vaciar todo"):
+    st.markdown("---")
+    
+    # --- ENVÍO FINAL ---
+    if st.button("🚀 ENVIAR PEDIDO COMPLETO"):
+        try:
+            df_final = pd.DataFrame(st.session_state.carrito)
+            
+            # 1. Guardar en Pedidos
+            try:
+                existente = conn.read(worksheet="Pedidos", ttl=0).dropna(how='all')
+            except Exception:
+                existente = pd.DataFrame(columns=["Tecnico", "Codigo", "Articulo", "Cantidad"])
+            
+            act_pedidos = pd.concat([existente, df_final], ignore_index=True)
+            conn.update(worksheet="Pedidos", data=act_pedidos)
+            
+            # 2. Registrar Bloqueo
+            try:
+                ex_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+            except Exception:
+                ex_auth = pd.DataFrame(columns=["Email", "Estado"])
+            
+            nuevo_b = pd.DataFrame([{"Email": st.session_state.email_usuario, "Estado": "Bloqueado"}])
+            act_auth = pd.concat([ex_auth, nuevo_b], ignore_index=True)
+            conn.update(worksheet="Autorizaciones", data=act_auth)
+            
+            st.balloons()
+            st.success("✅ ¡Enviado! Tu acceso ha sido pausado.")
             st.session_state.carrito = []
             st.rerun()
-    with col_b:
-        if st.button("🚀 ENVIAR Y FINALIZAR"):
-            try:
-                # 1. Guardar Pedidos
-                try:
-                    existente = conn.read(worksheet="Pedidos", ttl=0).dropna(how='all')
-                except Exception:
-                    existente = pd.DataFrame(columns=["Tecnico", "Codigo", "Articulo", "Cantidad"])
-                
-                act_pedidos = pd.concat([existente, df_pedido], ignore_index=True)
-                conn.update(worksheet="Pedidos", data=act_pedidos)
-                
-                # 2. Registrar Bloqueo
-                try:
-                    ex_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
-                except Exception:
-                    ex_auth = pd.DataFrame(columns=["Email", "Estado"])
-                
-                nuevo_b = pd.DataFrame([{"Email": st.session_state.email_usuario, "Estado": "Bloqueado"}])
-                act_auth = pd.concat([ex_auth, nuevo_b], ignore_index=True)
-                conn.update(worksheet="Autorizaciones", data=act_auth)
-                
-                st.balloons()
-                st.success("✅ Pedido enviado correctamente.")
-                st.session_state.carrito = []
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error: {e}")
+        except Exception as e:
+            st.error(f"Error al enviar: {e}")
