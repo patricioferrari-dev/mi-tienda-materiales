@@ -34,7 +34,7 @@ materiales_disponibles = {
     "90106 FILTRO PARA ALTOS 102 MHZ": 0,
     "31154 Etiqueta de identificacion para Drop FO (Kit doble)": 0,
     "012009U Fuente Alimentacion 12V - 1A / Extensor Wifi AIRTIES AIR4960X": 0
-}   
+}
 
 # Inicializar el carrito en la sesión del navegador
 if 'carrito' not in st.session_state:
@@ -73,7 +73,7 @@ if st.session_state.carrito:
             st.session_state.carrito = []
             st.rerun()
 
-    ith col_b:
+    with col_b:
         if st.button("Finalizar y Enviar Pedido"):
             try:
                 # Conectar indicando que la hoja se llama "pedidos"
@@ -82,20 +82,4 @@ if st.session_state.carrito:
                 # Leer la pestaña específica
                 existente = conn.read(worksheet="pedidos", ttl=0)
                 
-                # Si la hoja está vacía, crear un DataFrame limpio para evitar errores
-                if existente is None or existente.empty:
-                    actualizado = df_pedido
-                else:
-                    actualizado = pd.concat([existente, df_pedido], ignore_index=True)
-                
-                # Guardar en la pestaña "pedidos"
-                conn.update(worksheet="pedidos", data=actualizado)
-                
-                st.balloons()
-                st.success("✅ ¡Pedido enviado! Revisa la hoja 'pedidos' en tu Drive.")
-                st.session_state.carrito = [] 
-                
-            except Exception as e:
-                st.error(f"Error: {e}")
-else:
-    st
+                #
