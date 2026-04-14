@@ -22,7 +22,25 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. FUNCIONES DE VALIDACIÓN
+# 2. FUNCIONES DE VALIDACIÓN Y AUDITORÍA
+def registrar_log(usuario, dni, evento, seccion="-", detalle="-"):
+    """Registra eventos en la hoja 'Logs' para auditoría profesional."""
+    try:
+        tz_ba = pytz.timezone('America/Argentina/Buenos_Aires')
+        ahora = datetime.now(tz_ba).strftime("%d/%m/%Y %H:%M:%S")
+        nuevo_log = pd.DataFrame([{
+            "Fecha": ahora,
+            "Usuario": usuario,
+            "DNI": str(dni),
+            "Evento": evento,
+            "Seccion": seccion,
+            "Detalle": detalle
+        }])
+        df_logs = conn.read(worksheet="Logs", ttl=0).dropna(how='all')
+        conn.update(worksheet="Logs", data=pd.concat([df_logs, nuevo_log], ignore_index=True))
+    except:
+        pass # Evita que la app se caiga si fallan los logs
+
 def es_email_valido(email):
     patron = r'^[\w\.-]+@[\w\.-]+\.\w+$'
     return re.match(patron, email) is not None
@@ -72,10 +90,12 @@ if not st.session_state.autenticado:
                     idx_list = df_db.index[df_db['DNI_STR'] == dni_target].tolist()
                     
                     if idx_list:
-                        df_db.loc[idx_list[0], 'Contrasena'] = str(nueva_p)
-                        df_db.loc[idx_list[0], 'Email'] = str(n_mail)
-                        df_db.loc[idx_list[0], 'Celular'] = str(cel_limpio)
+                        idx = idx_list[0]
+                        df_db.loc[idx, 'Contrasena'] = str(nueva_p)
+                        df_db.loc[idx, 'Email'] = str(n_mail)
+                        df_db.loc[idx, 'Celular'] = str(cel_limpio)
                         conn.update(worksheet="DB_Tecnicos", data=df_db.drop(columns=['DNI_STR']))
+                        registrar_log(f"{user.get('Nombre')} {user.get('Apellido')}", dni_target, "REGISTRO_EXITOSO", "Acceso", "Cuenta activada por primera vez")
                         st.success("✅ Cuenta activada.")
                         st.session_state.reestablecer = False
                         time.sleep(2); st.rerun()
@@ -90,19 +110,18 @@ if not st.session_state.autenticado:
                 match = df_db[df_db['DNI_STR'] == dni_input]
                 
                 if not match.empty:
-                    # NUEVA VALIDACIÓN: Si ya tiene contraseña, no puede volver a registrarse
                     pass_existente = str(match.iloc[0].get('Contrasena', '')).strip().lower()
                     if pass_existente not in ["", "nan", "none"]:
-                        st.error("⚠️ Este DNI ya tiene una cuenta activa. Por favor, inicia sesión.")
-                        time.sleep(2)
-                        st.session_state.modo_registro = False
-                        st.rerun()
+                        registrar_log("Anónimo", dni_input, "INTENTO_DUPLICADO", "Registro", "Usuario ya existente intentó registrarse de nuevo")
+                        st.error("⚠️ Este DNI ya tiene una cuenta activa.")
                     else:
                         st.session_state.user_a_reestablecer = match.iloc[0].to_dict()
                         st.session_state.reestablecer = True
                         st.session_state.modo_registro = False
                         st.rerun()
-                else: st.error("🚫 DNI no encontrado en el padrón.")
+                else: 
+                    registrar_log("Anónimo", dni_input, "DNI_NO_ENCONTRADO", "Registro", "Intento de registro con DNI fuera de padrón")
+                    st.error("🚫 DNI no encontrado.")
         if st.button("⬅️ Volver"): st.session_state.modo_registro = False; st.rerun()
 
     else:
@@ -122,8 +141,14 @@ if not st.session_state.autenticado:
                 elif real_pass == u_pass:
                     st.session_state.autenticado = True
                     st.session_state.datos_usuario = user_match.iloc[0].to_dict()
+                    registrar_log(f"{st.session_state.datos_usuario.get('Nombre')} {st.session_state.datos_usuario.get('Apellido')}", u_id, "LOGIN_EXITOSO", "Acceso")
                     st.rerun()
-                else: st.error("Contraseña incorrecta.")
+                else: 
+                    registrar_log("Anónimo", u_id, "PASS_INCORRECTO", "Acceso")
+                    st.error("Contraseña incorrecta.")
+            else:
+                registrar_log("Anónimo", u_id, "USER_NO_EXISTE", "Acceso")
+                st.error("Usuario no encontrado.")
         if c2.button("Registrarme", use_container_width=True): st.session_state.modo_registro = True; st.rerun()
     st.stop()
 
@@ -134,10 +159,11 @@ def cambiar_seccion(nueva):
         st.session_state.seccion = nueva
 
 dni_actual = str(st.session_state.datos_usuario.get('DNI', '')).split(".")[0].strip()
+nombre_completo = f"{st.session_state.datos_usuario.get('Nombre')} {st.session_state.datos_usuario.get('Apellido')}"
 
 if st.session_state.seccion == "Menu":
     st.title("🏢 Panel de Control")
-    st.write(f"Operador: **{st.session_state.datos_usuario.get('Nombre')} {st.session_state.datos_usuario.get('Apellido')}**")
+    st.write(f"Operador: **{nombre_completo}**")
     
     if dni_actual == "1111111":
         c1, c2 = st.columns(2)
@@ -151,9 +177,9 @@ if st.session_state.seccion == "Menu":
         es_ok = not auth_row.empty and str(auth_row.iloc[0].get('Estado', '')).lower() == "ok"
 
         if not es_horario_permitido():
-            c1.button("🔒\nMAT. CERRADO", disabled=True, help="L-M-V 07:00 a 15:00")
+            c1.button("🔒\nMAT. CERRADO", disabled=True)
         elif not es_ok:
-            c1.button("🚫\nYA PEDIDO / BLOQUEADO", disabled=True, help="Máximo 1 pedido permitido.")
+            c1.button("🚫\nBLOQUEADO", disabled=True)
         else:
             if c1.button("📦\nMATERIALES"): cambiar_seccion("Materiales"); st.rerun()
             
@@ -180,7 +206,6 @@ with tab1:
     with st.form("f_registro", clear_on_submit=True):
         sel = st.selectbox("Elegir Artículo:", items)
         cant = st.number_input("Cantidad:", min_value=1, step=1, value=1)
-        
         motivo = ""
         if st.session_state.seccion == "Herramientas":
             motivo = st.selectbox("Motivo:", ["Rotura", "Perdido", "Nunca entregado"])
@@ -219,10 +244,14 @@ with tab2:
                 st.session_state.carrito.pop(idx); st.rerun()
         
         if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
+            # Guardar pedido
             df_new = pd.DataFrame(st.session_state.carrito)
             df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
             conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new], ignore_index=True))
             
+            # Auditoría del pedido
+            registrar_log(nombre_completo, dni_actual, "ENVIO_PEDIDO", st.session_state.seccion, f"Items: {len(st.session_state.carrito)}")
+
             if st.session_state.seccion == "Materiales":
                 df_up = conn.read(worksheet="Autorizaciones", ttl=0)
                 df_up['DNI_STR'] = df_up['DNI'].astype(str).str.split('.').str[0].str.strip()
@@ -230,7 +259,8 @@ with tab2:
                 if idx_auth:
                     df_up.at[idx_auth[0], 'Estado'] = "bloqueado"
                     conn.update(worksheet="Autorizaciones", data=df_up.drop(columns=['DNI_STR']))
+                    registrar_log(nombre_completo, dni_actual, "BLOQUEO_AUTO", "Autorizaciones", "Acceso a materiales revocado post-pedido")
 
-            st.success("✅ Pedido enviado. Se ha bloqueado tu acceso a Materiales.")
+            st.success("✅ Pedido enviado.")
             st.session_state.carrito = []
             time.sleep(2); cambiar_seccion("Menu"); st.rerun()
