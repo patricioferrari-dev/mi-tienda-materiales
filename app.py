@@ -8,26 +8,49 @@ import time
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="SGM - Gestión Integral", page_icon="🏢", layout="centered")
 
-# CSS Profesional - Corregido para evitar errores de parámetros
+# CSS Avanzado para vista de cuadrícula compacta y botón X rojo pequeño
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
     .stButton>button { width: 100%; border-radius: 10px; font-weight: bold; height: 3.5em; }
     
-    /* Selector específico para los botones de eliminar (X) */
+    /* Contenedor de filas del pedido para que parezca cuadrícula */
+    [data-testid="stVerticalBlock"] > div > div > [data-testid="stHorizontalBlock"] {
+        border-bottom: 1px solid #ddd;
+        padding: 5px 0px;
+        align-items: center;
+    }
+
+    /* Botón X: Muy pequeño, rojo y circular/cuadrado */
     div[data-testid="stColumn"] button {
         background-color: #ff4b4b !important;
         color: white !important;
         border: none !important;
-        height: 2.2em !important;
-        width: 100% !important;
-        border-radius: 5px !important;
+        height: 25px !important;
+        width: 25px !important;
+        min-width: 25px !important;
+        max-width: 25px !important;
         padding: 0px !important;
+        margin: 0px auto !important;
+        line-height: 25px !important;
+        border-radius: 5px !important;
+        font-size: 12px !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
     }
+    
     div[data-testid="stColumn"] button:hover {
         background-color: #d33 !important;
-        color: white !important;
     }
+
+    /* Ajuste de textos en la cuadrícula */
+    .compact-text {
+        font-size: 14px !important;
+        margin: 0px !important;
+        padding: 0px !important;
+    }
+
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
@@ -112,11 +135,9 @@ if st.session_state.seccion == "Menu":
     if dni_actual == "1111111":
         col1, col2 = st.columns(2)
         if col1.button("📚\nInsumos Librería"):
-            st.session_state.seccion = "Insumos_Libreria"
-            st.rerun()
+            st.session_state.seccion = "Insumos_Libreria"; st.rerun()
         if col2.button("🧼\nInsumos Limpieza"):
-            st.session_state.seccion = "Insumos_Limpieza"
-            st.rerun()
+            st.session_state.seccion = "Insumos_Limpieza"; st.rerun()
     else:
         col1, col2, col3 = st.columns(3)
         if col1.button("📦\nMateriales"): st.session_state.seccion = "Materiales"; st.rerun()
@@ -126,7 +147,7 @@ if st.session_state.seccion == "Menu":
 
 # --- 5. INTERFAZ DE CARGA ---
 st.button("⬅️ Menú Principal", on_click=lambda: setattr(st.session_state, 'seccion', 'Menu'))
-st.title(f"Sección: {st.session_state.seccion.replace('_', ' ')}")
+st.title(f"{st.session_state.seccion.replace('_', ' ')}")
 
 listas = {
     "Materiales": ["13008 CONTROL", "30032 CABLE", "31025 PRECINTO"],
@@ -137,7 +158,7 @@ listas = {
 }
 items = listas.get(st.session_state.seccion, [])
 
-tab1, tab2 = st.tabs(["📝 Cargar Artículos", "🛒 Mi Pedido"])
+tab1, tab2 = st.tabs(["📝 Cargar", "🛒 Pedido"])
 
 with tab1:
     with st.form("f_carga", clear_on_submit=True):
@@ -150,64 +171,50 @@ with tab1:
         if st.form_submit_button("➕ AÑADIR"):
             if cant.isdigit() and int(cant) > 0:
                 if st.session_state.seccion in ["Insumos_Libreria", "Insumos_Limpieza"]:
-                    codigo_final = "S/C"
-                    articulo_final = sel
+                    cod_f, art_f = "S/C", sel
                 else:
-                    codigo_final = sel.split(" ", 1)[0]
-                    articulo_final = sel.split(" ", 1)[1] if " " in sel else ""
+                    cod_f = sel.split(" ", 1)[0]
+                    art_f = sel.split(" ", 1)[1] if " " in sel else ""
 
                 st.session_state.carrito.append({
                     "Nombre": st.session_state.datos_usuario['Nombre'],
                     "Apellido": st.session_state.datos_usuario['Apellido'],
                     "DNI": st.session_state.datos_usuario['DNI'],
-                    "Codigo": codigo_final,
-                    "Articulo": articulo_final,
-                    "Cantidad": int(cant),
-                    "Motivo": mot,
-                    "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M")
+                    "Codigo": cod_f, "Articulo": art_f, "Cantidad": int(cant),
+                    "Motivo": mot, "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M")
                 })
-                st.success(f"Añadido: {articulo_final}")
-                time.sleep(0.5)
                 st.rerun()
 
 with tab2:
     if not st.session_state.carrito:
-        st.info("El carrito está vacío.")
+        st.info("Vacío")
     else:
-        st.subheader("Resumen del Pedido")
+        # Encabezados compactos
+        c1, c2, c3 = st.columns([1, 4, 1])
+        c1.write("**Cant**")
+        c2.write("**Artículo**")
+        c3.write("**X**")
         
-        # Encabezados
-        h1, h2, h3 = st.columns([1, 4, 1])
-        h1.write("**Cant.**")
-        h2.write("**Descripción**")
-        h3.write("**Elim.**")
-        st.divider()
-
-        # Filas de productos
+        # Lista en cuadrícula
         for i, item in enumerate(st.session_state.carrito):
-            c1, c2, c3 = st.columns([1, 4, 1])
-            c1.write(f"{item['Cantidad']}")
+            row_c1, row_c2, row_c3 = st.columns([1, 4, 1])
+            row_c1.markdown(f"<p class='compact-text'>{item['Cantidad']}</p>", unsafe_allow_html=True)
             
             desc = f"[{item['Codigo']}] {item['Articulo']}" if item['Codigo'] != "S/C" else item['Articulo']
-            c2.write(desc)
+            row_c2.markdown(f"<p class='compact-text'>{desc}</p>", unsafe_allow_html=True)
             
-            # ELIMINADO EL PARÁMETRO 'kind' QUE CAUSABA EL ERROR
-            if c3.button("✖", key=f"del_{i}"):
+            if row_c3.button("✖", key=f"del_{i}"):
                 st.session_state.carrito.pop(i)
                 st.rerun()
-            
-            st.markdown("---")
 
-        if st.button("🚀 CONFIRMAR Y ENVIAR PEDIDO"):
+        st.divider()
+        if st.button("🚀 ENVIAR PEDIDO"):
             try:
                 df_e = pd.DataFrame(st.session_state.carrito)
                 ex = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
                 conn.update(worksheet=st.session_state.seccion, data=pd.concat([ex, df_e]))
-                st.balloons()
-                st.success("¡Pedido enviado correctamente!")
+                st.success("¡Enviado!")
                 st.session_state.carrito = []
                 st.session_state.seccion = "Menu"
-                time.sleep(2)
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error: {e}")
+                time.sleep(1.5); st.rerun()
+            except Exception as e: st.error(f"Error: {e}")
