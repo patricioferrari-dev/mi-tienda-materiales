@@ -141,4 +141,4 @@ if st.session_state.carrito:
                 except Exception:
                     auth_ex = pd.DataFrame(columns=["Email", "Estado"])
                 
-                nuevo_b = pd.DataFrame([{"Email": st.session_state.email_usuario, "Estado": "Bloqueado"}])
+                nuevo
