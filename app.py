@@ -73,26 +73,29 @@ if st.session_state.carrito:
             st.session_state.carrito = []
             st.rerun()
 
-    with col_b:
+    ith col_b:
         if st.button("Finalizar y Enviar Pedido"):
             try:
-                # Crear la conexión con Google Sheets
+                # Conectar indicando que la hoja se llama "pedidos"
                 conn = st.connection("gsheets", type=GSheetsConnection)
                 
-                # Leer datos existentes para no borrarlos
-                # (Asumimos que la hoja se llama "Sheet1" o "Hoja 1", ajusta si es necesario)
-                existente = conn.read()
+                # Leer la pestaña específica
+                existente = conn.read(worksheet="pedidos", ttl=0)
                 
-                # Combinar datos viejos con los nuevos
-                actualizado = pd.concat([existente, df_pedido], ignore_index=True)
+                # Si la hoja está vacía, crear un DataFrame limpio para evitar errores
+                if existente is None or existente.empty:
+                    actualizado = df_pedido
+                else:
+                    actualizado = pd.concat([existente, df_pedido], ignore_index=True)
                 
-                # Guardar de nuevo en la nube
-                conn.update(data=actualizado)
+                # Guardar en la pestaña "pedidos"
+                conn.update(worksheet="pedidos", data=actualizado)
                 
                 st.balloons()
-                st.success("✅ Pedido enviado correctamente. ¡Gracias por su compra!")
+                st.success("✅ ¡Pedido enviado! Revisa la hoja 'pedidos' en tu Drive.")
                 st.session_state.carrito = [] 
+                
             except Exception as e:
-                st.error(f"Error al conectar con Google Sheets: {e}")
+                st.error(f"Error: {e}")
 else:
     st
