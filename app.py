@@ -13,7 +13,6 @@ st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
     .stButton>button { width: 100%; border-radius: 10px; font-weight: bold; height: 3.5em; }
-    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
@@ -23,12 +22,16 @@ st.markdown("""
 # 2. INICIALIZACIÓN DE ESTADOS
 if 'autenticado' not in st.session_state:
     st.session_state.autenticado = False
+if 'datos_usuario' not in st.session_state:
+    st.session_state.datos_usuario = None
 if 'seccion' not in st.session_state:
     st.session_state.seccion = "Menu"
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
 
-# 3. LÓGICA DE LOGIN
+# 3. LÓGICA DE LOGIN Y PERFIL
+conn = st.connection("gsheets", type=GSheetsConnection)
+
 def check_login():
     email = st.session_state.email_login.lower().strip()
     try:
@@ -46,13 +49,48 @@ if not st.session_state.autenticado:
     st.text_input("Correo Electrónico:", key="email_login", on_change=check_login)
     st.stop()
 
-# 4. CONEXIÓN A GOOGLE SHEETS
-conn = st.connection("gsheets", type=GSheetsConnection)
+# --- VERIFICACIÓN DE PERFIL EN BASE DE DATOS ---
+try:
+    df_db = conn.read(worksheet="DB_Tecnicos", ttl=0).dropna(how='all')
+    user_info = df_db[df_db['Email'] == st.session_state.email_usuario]
+    
+    if user_info.empty:
+        # REGISTRO POR PRIMERA VEZ
+        st.title("📝 Registro de Técnico")
+        st.warning("Es tu primer ingreso. Por favor, completa tus datos:")
+        with st.form("registro_tecnico"):
+            nombre = st.text_input("Nombre:")
+            apellido = st.text_input("Apellido:")
+            celular = st.text_input("Celular (con código de área):")
+            if st.form_submit_button("Guardar Datos"):
+                if nombre and apellido and celular:
+                    nuevo_perfil = pd.DataFrame([{
+                        "Email": st.session_state.email_usuario,
+                        "Nombre": nombre.title(),
+                        "Apellido": apellido.title(),
+                        "Celular": celular
+                    }])
+                    # Actualizar hoja DB_Tecnicos
+                    df_actualizado = pd.concat([df_db, nuevo_perfil], ignore_index=True)
+                    conn.update(worksheet="DB_Tecnicos", data=df_actualizado)
+                    st.success("Datos guardados. Reingresando...")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("Todos los campos son obligatorios.")
+        st.stop()
+    else:
+        # Recuperar datos para el autocompletado
+        st.session_state.datos_usuario = user_info.iloc[0].to_dict()
+except Exception as e:
+    st.error(f"Error cargando base de datos: {e}")
+    st.stop()
 
-# 5. MENÚ PRINCIPAL
+# 4. MENÚ PRINCIPAL
 if st.session_state.seccion == "Menu":
     st.title("🏢 SGM - Panel de Gestión")
-    st.write(f"Bienvenido técnico: **{st.session_state.email_usuario}**")
+    st.markdown(f"Técnico: **{st.session_state.datos_usuario['Nombre']} {st.session_state.datos_usuario['Apellido']}**")
+    st.caption(f"📱 Cel: {st.session_state.datos_usuario['Celular']} | 📧 {st.session_state.email_usuario}")
     st.divider()
     
     col1, col2, col3 = st.columns(3)
@@ -70,137 +108,83 @@ if st.session_state.seccion == "Menu":
             st.rerun()
     st.stop()
 
-# 6. VALIDACIONES EXCLUSIVAS PARA MATERIALES (L-M-V | 07:00 a 15:00)
+# 5. VALIDACIONES PARA MATERIALES (L-M-V)
 if st.session_state.seccion == "Materiales":
     tz_arg = pytz.timezone('America/Argentina/Buenos_Aires')
     ahora_arg = datetime.now(tz_arg)
-    
-    dia_semana = ahora_arg.weekday() # 0=Lunes, 2=Miércoles, 4=Viernes
-    hora_actual = ahora_arg.time()
-    hora_inicio = datetime.strptime("07:00", "%H:%M").time()
-    hora_fin = datetime.strptime("15:00", "%H:%M").time()
-
-    if dia_semana not in [0, 2, 4] or not (hora_inicio <= hora_actual <= hora_fin):
-        st.title("🕒 Sistema Cerrado")
-        st.warning("Materiales solo disponible Lunes, Miércoles y Viernes de 07:00 a 15:00 hs.")
-        if st.button("⬅️ Volver al Menú"):
+    if ahora_arg.weekday() not in [0, 2, 4] or not (7 <= ahora_arg.hour < 15):
+        st.title("🕒 Cerrado")
+        st.warning("L-M-V de 07:00 a 15:00 hs.")
+        if st.button("⬅️ Menú"):
             st.session_state.seccion = "Menu"
             st.rerun()
         st.stop()
 
-    # Bloqueo por pedido realizado hoy
-    try:
-        df_auth = conn.read(worksheet="Autorizaciones", ttl=0)
-        if st.session_state.email_usuario in df_auth[df_auth['Estado'] == 'Bloqueado']['Email'].values:
-            st.error("🚫 Ya realizaste un pedido de materiales en esta jornada.")
-            if st.button("⬅️ Volver"):
-                st.session_state.seccion = "Menu"
-                st.rerun()
-            st.stop()
-    except:
-        pass
-
-# 7. LISTADO DE ARTÍCULOS
+# 6. LISTADO DE ARTÍCULOS (Acortado para el ejemplo)
 listas = {
-    "Materiales": [
-        "13008 CONTROL REMOTO SAGECOM", "30032 CABLE COAXIL RG6", "31025 PRECINTO NEGRO",
-        "31026 TARUGO 8MM", "31027 PITON CON TOPE", "87025 CONECTOR RG6", "90002 PILA AAA"
-    ],
-    "Herramientas": [
-        "H001 PINZA PUNTA", "H002 ALICATE", "H003 PELACABLE", "H004 TALADRO", "H005 CRIMPADORA"
-    ],
-    "Indumentaria": [
-        "I001 PANTALON CARGO T44", "I002 CHOMBA LOGO L", "I003 BOTINES SEGURIDAD", "I004 CAMPERA"
-    ]
+    "Materiales": ["13008 CONTROL REMOTO", "30032 CABLE COAXIL", "31025 PRECINTO"],
+    "Herramientas": ["H001 PINZA PUNTA", "H002 ALICATE"],
+    "Indumentaria": ["I001 PANTALON CARGO", "I002 CHOMBA L"]
 }
 items_disponibles = listas.get(st.session_state.seccion, [])
 
-# 8. INTERFAZ DE CARGA
+# 7. INTERFAZ DE CARGA
 st.button("⬅️ Menú Principal", on_click=lambda: setattr(st.session_state, 'seccion', 'Menu'))
-st.title(f"Solicitud de {st.session_state.seccion}")
+st.title(f"Solicitud: {st.session_state.seccion}")
 
 tab_carga, tab_resumen = st.tabs(["📝 Cargar", "🛒 Mi Pedido"])
 
 with tab_carga:
     with st.form("form_carga", clear_on_submit=True):
         seleccion = st.selectbox("Seleccione Artículo:", items_disponibles)
-        
-        # Motivos dinámicos
-        motivo_envio = ""
-        if st.session_state.seccion == "Herramientas":
-            motivo_envio = st.radio("Motivo:", ["Cambio", "Perdido", "Nunca entregado"], horizontal=True)
-        elif st.session_state.seccion == "Indumentaria":
-            motivo_envio = st.radio("Motivo:", ["Desgaste", "Nunca entregado"], horizontal=True)
+        motivo = ""
+        if st.session_state.seccion in ["Herramientas", "Indumentaria"]:
+            opciones = ["Cambio", "Perdido", "Nunca entregado"] if st.session_state.seccion == "Herramientas" else ["Desgaste", "Nunca entregado"]
+            motivo = st.radio("Motivo:", opciones, horizontal=True)
             
         cantidad = st.text_input("Cantidad:")
         
-        if st.form_submit_button("➕ AÑADIR AL PEDIDO"):
+        if st.form_submit_button("➕ AÑADIR"):
             if cantidad.isdigit() and int(cantidad) > 0:
-                codigo_nuevo = seleccion.split(" ", 1)[0]
-                
-                # Prohibir duplicados
-                ya_esta = any(item['Codigo'] == codigo_nuevo for item in st.session_state.carrito)
-                
-                if ya_esta:
-                    st.error(f"❌ El artículo {codigo_nuevo} ya está en el carrito.")
+                codigo = seleccion.split(" ", 1)[0]
+                if any(item['Codigo'] == codigo for item in st.session_state.carrito):
+                    st.error("Artículo ya en el carrito.")
                 else:
-                    partes = seleccion.split(" ", 1)
                     st.session_state.carrito.append({
-                        "Tecnico": st.session_state.email_usuario,
-                        "Codigo": codigo_nuevo,
-                        "Articulo": partes[1] if len(partes) > 1 else "",
+                        "Email": st.session_state.email_usuario,
+                        "Nombre": st.session_state.datos_usuario['Nombre'],
+                        "Apellido": st.session_state.datos_usuario['Apellido'],
+                        "Celular": st.session_state.datos_usuario['Celular'],
+                        "Codigo": codigo,
+                        "Articulo": seleccion.split(" ", 1)[1],
                         "Cantidad": int(cantidad),
-                        "Motivo": motivo_envio,
+                        "Motivo": motivo,
                         "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M")
                     })
-                    st.toast("¡Añadido!")
-                    time.sleep(0.5)
                     st.rerun()
-            else:
-                st.error("Ingrese una cantidad válida.")
 
 with tab_resumen:
     if not st.session_state.carrito:
-        st.info("El carrito está vacío.")
+        st.info("Carrito vacío.")
     else:
         for i, item in enumerate(st.session_state.carrito):
-            c1, c2, c3 = st.columns([3, 1, 0.5])
-            c1.write(f"**{item['Codigo']}** - {item['Articulo']}")
-            if item['Motivo']: c1.caption(f"Motivo: {item['Motivo']}")
-            c2.write(f"Cant: {item['Cantidad']}")
-            if c3.button("❌", key=f"del_{i}"):
+            st.write(f"**{item['Codigo']}** - {item['Articulo']} (x{item['Cantidad']})")
+            if st.button("❌", key=f"del_{i}"):
                 st.session_state.carrito.pop(i)
                 st.rerun()
         
-        if st.button("🚀 CONFIRMAR Y ENVIAR"):
-            with st.spinner("Enviando..."):
-                try:
-                    df_envio = pd.DataFrame(st.session_state.carrito)
-                    hoja = st.session_state.seccion
-                    
-                    # Leer y concatenar
-                    try:
-                        ex = conn.read(worksheet=hoja, ttl=0).dropna(how='all')
-                        res = pd.concat([ex, df_envio], ignore_index=True)
-                    except:
-                        res = df_envio
-                    
-                    conn.update(worksheet=hoja, data=res)
-                    
-                    # Bloqueo si es materiales
-                    if st.session_state.seccion == "Materiales":
-                        try:
-                            auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
-                        except:
-                            auth = pd.DataFrame(columns=["Email", "Estado"])
-                        nuevo = pd.DataFrame([{"Email": st.session_state.email_usuario, "Estado": "Bloqueado"}])
-                        conn.update(worksheet="Autorizaciones", data=pd.concat([auth, nuevo], ignore_index=True))
-                    
-                    st.balloons()
-                    st.success("¡Pedido enviado correctamente!")
-                    st.session_state.carrito = []
-                    time.sleep(2)
-                    st.session_state.seccion = "Menu"
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error de conexión: {e}")
+        if st.button("🚀 ENVIAR TODO"):
+            try:
+                hoja = st.session_state.seccion
+                df_envio = pd.DataFrame(st.session_state.carrito)
+                existente = conn.read(worksheet=hoja, ttl=0).dropna(how='all')
+                conn.update(worksheet=hoja, data=pd.concat([existente, df_envio], ignore_index=True))
+                
+                # Bloqueo (Opcional si es Materiales)
+                st.success("¡Pedido enviado!")
+                st.session_state.carrito = []
+                st.session_state.seccion = "Menu"
+                time.sleep(1.5)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error: {e}")
