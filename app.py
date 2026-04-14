@@ -8,7 +8,7 @@ import time
 # 1. CONFIGURACIÓN
 st.set_page_config(page_title="SGM - Gestión", page_icon="🏢", layout="wide")
 
-# 2. CSS PARA COMPACIDAD Y ESTILO
+# 2. CSS PARA COMPACIDAD
 st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
@@ -26,25 +26,48 @@ st.markdown("""
 def es_horario_permitido():
     tz_ba = pytz.timezone('America/Argentina/Buenos_Aires')
     ahora = datetime.now(tz_ba)
-    dia_semana = ahora.weekday() # 0=Lun, 1=Mar, 2=Mie, 3=Jue, 4=Vie
+    dia_semana = ahora.weekday() 
     hora_actual = ahora.hour
-    
-    # Lunes (0), Miércoles (2), Viernes (4) entre las 07:00 y las 14:59:59
-    dias_ok = dia_semana in [0, 2, 4]
-    hora_ok = 7 <= hora_actual < 15
-    return dias_ok and hora_ok
+    return dia_semana in [0, 2, 4] and 7 <= hora_actual < 15
 
 # 4. ESTADOS
 if 'autenticado' not in st.session_state: st.session_state.autenticado = False
 if 'modo_registro' not in st.session_state: st.session_state.modo_registro = False
+if 'reestablecer' not in st.session_state: st.session_state.reestablecer = False
+if 'user_a_reestablecer' not in st.session_state: st.session_state.user_a_reestablecer = None
 if 'seccion' not in st.session_state: st.session_state.seccion = "Menu"
 if 'carrito' not in st.session_state: st.session_state.carrito = []
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 5. LOGIN Y REGISTRO
+# 5. LOGIN, REGISTRO Y REESTABLECIMIENTO
 if not st.session_state.autenticado:
-    if st.session_state.modo_registro:
+    # --- MODO REESTABLECER CONTRASEÑA ---
+    if st.session_state.reestablecer:
+        st.title("🔑 Reestablecer Contraseña")
+        st.info(f"Usuario detectado: {st.session_state.user_a_reestablecer['Nombre']}. Ingresa tu nueva contraseña.")
+        with st.form("form_reset"):
+            nueva_p = st.text_input("Nueva Contraseña:", type="password")
+            confirm_p = st.text_input("Confirmar Contraseña:", type="password")
+            if st.form_submit_button("GUARDAR CONTRASEÑA"):
+                if nueva_p == confirm_p and len(nueva_p) > 0:
+                    df_db = conn.read(worksheet="DB_Tecnicos", ttl=0)
+                    # Buscamos por DNI que es único
+                    idx = df_db.index[df_db['DNI'].astype(str) == str(st.session_state.user_a_reestablecer['DNI'])].tolist()[0]
+                    df_db.at[idx, 'Contrasena'] = nueva_p
+                    conn.update(worksheet="DB_Tecnicos", data=df_db)
+                    st.success("Contraseña actualizada. Ya puedes ingresar.")
+                    st.session_state.reestablecer = False
+                    time.sleep(2)
+                    st.rerun()
+                else:
+                    st.error("Las contraseñas no coinciden o están vacías.")
+        if st.button("Cancelar"): 
+            st.session_state.reestablecer = False
+            st.rerun()
+
+    # --- MODO REGISTRO ---
+    elif st.session_state.modo_registro:
         st.title("📝 Registro de Usuario")
         with st.form("form_reg"):
             n_email = st.text_input("Email:").strip().lower()
@@ -53,7 +76,7 @@ if not st.session_state.autenticado:
             n_dni = st.text_input("DNI:")
             n_cel = st.text_input("Celular:")
             n_pas = st.text_input("Contraseña:", type="password")
-            if st.form_submit_button("REGISTRARME", use_container_width=True):
+            if st.form_submit_button("REGISTRARME"):
                 df_check = conn.read(worksheet="DB_Tecnicos", ttl=0)
                 if n_dni in df_check['DNI'].astype(str).values:
                     st.error("DNI ya registrado.")
@@ -62,20 +85,41 @@ if not st.session_state.autenticado:
                     conn.update(worksheet="DB_Tecnicos", data=pd.concat([df_check, nuevo], ignore_index=True))
                     st.success("Registrado."); st.session_state.modo_registro = False; time.sleep(1); st.rerun()
         if st.button("⬅️ Volver"): st.session_state.modo_registro = False; st.rerun()
+
+    # --- MODO LOGIN ---
     else:
         st.title("🔐 Acceso SGM")
         u_mail = st.text_input("Email:").strip().lower()
         u_pass = st.text_input("Contraseña:", type="password").strip()
         c1, c2 = st.columns(2)
+        
         if c1.button("Ingresar", use_container_width=True):
             db = conn.read(worksheet="DB_Tecnicos", ttl=0)
             db['Email'] = db['Email'].astype(str).str.strip().str.lower()
-            db['Contrasena'] = db['Contrasena'].astype(str).str.strip()
-            m = db[(db['Email'] == u_mail) & (db['Contrasena'] == u_pass)]
-            if not m.empty:
-                st.session_state.autenticado = True; st.session_state.datos_usuario = m.iloc[0].to_dict(); st.rerun()
-            else: st.error("Datos incorrectos.")
-        if c2.button("Registrarse", use_container_width=True): st.session_state.modo_registro = True; st.rerun()
+            
+            # Buscamos el usuario por Mail
+            user_data = db[db['Email'] == u_mail]
+            
+            if not user_data.empty:
+                # Verificamos si la contraseña en Excel está vacía o es NaN
+                pass_excel = str(user_data.iloc[0].get('Contrasena', '')).strip().lower()
+                
+                if pass_excel in ["", "nan", "none"]:
+                    st.session_state.user_a_reestablecer = user_data.iloc[0].to_dict()
+                    st.session_state.reestablecer = True
+                    st.rerun()
+                elif pass_excel == u_pass:
+                    st.session_state.autenticado = True
+                    st.session_state.datos_usuario = user_data.iloc[0].to_dict()
+                    st.rerun()
+                else:
+                    st.error("Contraseña incorrecta.")
+            else:
+                st.error("Usuario no encontrado.")
+                
+        if c2.button("Registrarse", use_container_width=True): 
+            st.session_state.modo_registro = True
+            st.rerun()
     st.stop()
 
 # 6. MENÚ PRINCIPAL
@@ -96,13 +140,10 @@ if st.session_state.seccion == "Menu":
         if c2.button("🧼\nLIMPIEZA"): cambiar_seccion("Insumos_Limpieza"); st.rerun()
     else:
         c1, c2, c3 = st.columns(3)
-        
-        # --- RESTRICCIÓN DE MATERIALES REAPLICADA ---
         if es_horario_permitido():
             if c1.button("📦\nMATERIALES"): cambiar_seccion("Materiales"); st.rerun()
         else:
-            c1.button("🔒\nMAT. CERRADO", disabled=True, help="LUN-MIE-VIE de 07:00 a 15:00")
-            
+            c1.button("🔒\nMAT. CERRADO", disabled=True, help="LUN-MIE-VIE 07:00 a 15:00")
         if c2.button("🔧\nHERRAMIENTAS"): cambiar_seccion("Herramientas"); st.rerun()
         if c3.button("👕\nINDUMENTARIA"): cambiar_seccion("Indumentaria"); st.rerun()
     st.stop()
@@ -113,8 +154,8 @@ st.subheader(f"📍 {st.session_state.seccion.replace('_', ' ')}")
 
 listas = {
     "Materiales": ["13008 CONTROL", "30032 CABLE", "31025 PRECINTO"],
-    "Herramientas": ["PINZA DE PUNTA", "ALICATE", "DESTORNILLADOR PH", "DESTORNILLADOR PL"],
-    "Indumentaria": ["PANTALON T.40", "PANTALON T.42", "CHOMBA L", "CHOMBA XL", "BOTINES"],
+    "Herramientas": ["PINZA DE PUNTA", "ALICATE", "DESTORNILLADOR PH"],
+    "Indumentaria": ["PANTALON T.40", "CHOMBA L", "BOTINES"],
     "Insumos_Libreria": ["Resma A4", "Lapicera Azul"],
     "Insumos_Limpieza": ["Lavandina 5L", "Detergente"]
 }
@@ -126,7 +167,6 @@ with t1:
     with st.form("f_reg", clear_on_submit=True):
         sel = st.selectbox("Artículo:", items)
         cant = st.number_input("Cantidad:", min_value=1, step=1, value=1)
-        
         motivo = ""
         if st.session_state.seccion == "Herramientas":
             motivo = st.selectbox("Motivo:", ["Rotura", "Perdido", "Nunca entregado"])
@@ -134,9 +174,8 @@ with t1:
             motivo = st.selectbox("Motivo:", ["Desgaste", "Nunca entregado"])
             
         if st.form_submit_button("AGREGAR AL RESUMEN", use_container_width=True):
-            # BLOQUEO DE DUPLICADOS (Solo por nombre de artículo)
             if any(i['Articulo'] == sel for i in st.session_state.carrito):
-                st.warning(f"⚠️ '{sel}' ya está en el resumen.")
+                st.warning(f"'{sel}' ya está en el resumen.")
             else:
                 st.session_state.carrito.append({
                     "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M"),
@@ -145,9 +184,7 @@ with t1:
                     "Apellido": st.session_state.datos_usuario.get('Apellido'),
                     "Celular": st.session_state.datos_usuario.get('Celular'),
                     "DNI": st.session_state.datos_usuario.get('DNI'),
-                    "Articulo": sel, 
-                    "Cantidad": int(cant),
-                    "Motivo": motivo
+                    "Articulo": sel, "Cantidad": int(cant), "Motivo": motivo
                 })
                 st.rerun()
 
@@ -159,10 +196,9 @@ with t2:
         h1.markdown('<div class="header-box">CANT</div>', unsafe_allow_html=True)
         h2.markdown('<div class="header-box">DESCRIPCIÓN / MOTIVO</div>', unsafe_allow_html=True)
         h3.markdown('<div class="header-box">ELIM</div>', unsafe_allow_html=True)
-        
         for idx, item in enumerate(st.session_state.carrito):
             r1, r2, r3 = st.columns([1, 6, 0.8])
-            r1.markdown(f'<div class="cell-data" style="text-align:center; width:100%">{item["Cantidad"]}</div>', unsafe_allow_html=True)
+            r1.markdown(f'<div class="cell-data" style="text-align:center">{item["Cantidad"]}</div>', unsafe_allow_html=True)
             txt_motivo = f" ({item.get('Motivo', '')})" if item.get('Motivo') else ""
             r2.markdown(f'<div class="cell-data">{item["Articulo"]}{txt_motivo}</div>', unsafe_allow_html=True)
             if r3.button("X", key=f"del_{idx}"):
@@ -172,4 +208,4 @@ with t2:
             df_new = pd.DataFrame(st.session_state.carrito)
             df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
             conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new], ignore_index=True))
-            st.success("¡Pedido enviado con éxito!"); st.session_state.carrito = []; time.sleep(1); st.rerun()
+            st.success("¡Pedido enviado!"); st.session_state.carrito = []; time.sleep(1); st.rerun()
