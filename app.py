@@ -31,24 +31,23 @@ st.markdown("""
         align-items: center;
     }
 
-    /* Quitar línea vertical en la última columna (donde está la X) */
+    /* Quitar línea vertical en la última columna */
     div[data-testid="stColumn"]:last-child {
         border-right: none;
     }
 
-    /* Botón X Rojo Mini */
+    /* Botón ELIMINAR Rojo (ajustado para texto) */
     div[data-testid="stColumn"] button {
         background-color: #ff4b4b !important;
         color: white !important;
         border: none !important;
-        height: 25px !important;
-        width: 25px !important;
-        min-width: 25px !important;
-        padding: 0px !important;
+        height: 28px !important;
+        width: 100% !important;
+        padding: 0px 5px !important;
         margin: 0px auto !important;
         border-radius: 4px !important;
-        font-size: 12px !important;
-        line-height: 1 !important;
+        font-size: 11px !important;
+        text-transform: uppercase;
     }
     
     div[data-testid="stColumn"] button:hover {
@@ -105,8 +104,8 @@ if not st.session_state.autenticado:
             col1, col2 = st.columns(2)
             dni_in = col1.text_input("DNI:")
             nom = col2.text_input("Nombre:")
-            ape = col1.text_input("Apellido:")
-            cel = col2.text_input("Celular:")
+            ape = col2.text_input("Apellido:")
+            cel = col1.text_input("Celular:")
             pwd = st.text_input("Contraseña:", type="password")
             if st.form_submit_button("Registrar"):
                 dni_l = dni_in.replace(".","").strip()
@@ -135,7 +134,7 @@ raw_dni = str(st.session_state.datos_usuario.get('DNI', ''))
 dni_actual = raw_dni.split(".")[0].replace(" ", "").replace(".", "")
 
 if st.session_state.seccion == "Menu":
-    st.session_state.carrito = [] # Limpiar carrito al volver al menú
+    st.session_state.carrito = [] 
     st.title("🏢 SGM - Gestión")
     st.write(f"Usuario: {st.session_state.datos_usuario['Nombre']}")
     st.divider()
@@ -193,18 +192,20 @@ with tab2:
     if not st.session_state.carrito:
         st.info("Vacío")
     else:
-        # Encabezados con líneas verticales punteadas
-        h1, h2, h3 = st.columns([1, 4, 1])
+        # Encabezados (ajustamos el ancho de columnas para el texto "Eliminar")
+        h1, h2, h3 = st.columns([1, 3.5, 1.5])
         h1.markdown("<p class='compact-text'><b>Cant</b></p>", unsafe_allow_html=True)
         h2.markdown("<p class='compact-text'><b>Artículo</b></p>", unsafe_allow_html=True)
-        h3.markdown("<p class='compact-text'><b>X</b></p>", unsafe_allow_html=True)
+        h3.markdown("<p class='compact-text'><b>Acción</b></p>", unsafe_allow_html=True)
         
         for i, item in enumerate(st.session_state.carrito):
-            row_c1, row_c2, row_c3 = st.columns([1, 4, 1])
+            row_c1, row_c2, row_c3 = st.columns([1, 3.5, 1.5])
             row_c1.markdown(f"<p class='compact-text'>{item['Cantidad']}</p>", unsafe_allow_html=True)
             desc = f"[{item['Codigo']}] {item['Articulo']}" if item['Codigo'] != "S/C" else item['Articulo']
             row_c2.markdown(f"<p class='compact-text'>{desc}</p>", unsafe_allow_html=True)
-            if row_c3.button("✖", key=f"del_{i}"):
+            
+            # Reemplazamos la X por el texto "Eliminar"
+            if row_c3.button("Eliminar", key=f"del_{i}"):
                 st.session_state.carrito.pop(i)
                 st.rerun()
 
