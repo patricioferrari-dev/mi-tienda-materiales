@@ -1,5 +1,5 @@
 import streamlit as st
-import pd
+import pandas as pd  # <--- Corregido aquí
 from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
 import time
@@ -63,7 +63,7 @@ st.markdown("""
         justify-content: flex-start !important;
     }
 
-    /* Botón Eliminar Estilizado */
+    /* Botón Eliminar Estilizado (Solo texto con borde) */
     div[data-testid="stColumn"] button {
         background-color: transparent !important;
         color: #dc3545 !important;
@@ -116,7 +116,7 @@ def validar_email():
         else:
             st.error("🚫 Correo no autorizado.")
     except:
-        st.error("⚠️ Error en Secrets.")
+        st.error("⚠️ Error en configuración de Secrets.")
 
 if not st.session_state.autenticado:
     st.title("🔐 Acceso al Sistema")
@@ -145,17 +145,17 @@ if not st.session_state.autenticado:
                     nuevo = pd.DataFrame([{"Email":st.session_state.email_usuario, "Nombre":nom.title(), "Apellido":ape.title(), "Celular":cel, "DNI":dni_f, "Contrasena":pwd}])
                     conn.update(worksheet="DB_Tecnicos", data=pd.concat([df_db, nuevo]))
                     st.success("Registrado correctamente."); time.sleep(1); st.rerun()
-                else: st.error("DNI no en padrón.")
+                else: st.error("DNI no autorizado.")
         st.stop()
     else:
         datos = user_row.iloc[0]
-        p_in = st.text_input(f"Hola {datos['Nombre']}, contraseña:", type="password")
+        p_in = st.text_input(f"Hola {datos['Nombre']}, ingresa tu contraseña:", type="password")
         if st.button("Ingresar"):
             if str(p_in) == str(datos['Contrasena']):
                 st.session_state.autenticado = True
                 st.session_state.datos_usuario = datos.to_dict()
                 st.rerun()
-            else: st.error("Incorrecta")
+            else: st.error("Contraseña incorrecta")
         st.stop()
 
 # 6. LÓGICA DE MENÚ
@@ -168,7 +168,6 @@ if st.session_state.seccion == "Menu":
     st.subheader(f"Bienvenido, {st.session_state.datos_usuario['Nombre']}")
     st.divider()
 
-    # Los botones dentro de este bloque ahora tendrán el fondo blanco y sombra
     if dni_actual == "1111111":
         col1, col2 = st.columns(2)
         if col1.button("📚\nInsumos Librería"): st.session_state.seccion = "Insumos_Libreria"; st.rerun()
