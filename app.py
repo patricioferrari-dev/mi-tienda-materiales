@@ -6,11 +6,9 @@ from streamlit_gsheets import GSheetsConnection
 st.set_page_config(page_title="Sistema de Pedidos", page_icon="📦")
 
 st.title("📦 Formulario de Pedidos Online")
-st.write("Selecciona tu nombre y los materiales para el pedido.")
+st.write("Selecciona tu nombre y carga los materiales.")
 
 # --- CONFIGURACIÓN DE LISTAS ---
-
-# 1. Lista de Técnicos (Agrega o quita nombres aquí)
 lista_tecnicos = [
     "Seleccionar...",
     "Juan Pérez",
@@ -20,7 +18,6 @@ lista_tecnicos = [
     "Christian Díaz"
 ]
 
-# 2. Lista de materiales
 materiales_disponibles = [
     "13008 CONTROL REMOTO PARA DECO SAGECOM DCWMI303. CON BOT",
     "30032 CABLE COAXIL RG6 QUADSHIELD NEGRO CON PORTANTE",
@@ -48,12 +45,22 @@ materiales_disponibles = [
     "012009U Fuente Alimentacion 12V - 1A / Extensor Wifi AIRTIES AIR4960X"
 ]
 
-# Inicializar carrito en la sesión
+# Inicializar estados de la sesión
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
+if 'pedido_enviado' not in st.session_state:
+    st.session_state.pedido_enviado = False
 
-# --- ENTRADA DEL NOMBRE DEL TÉCNICO (LISTA DESPLEGABLE) ---
-tecnico = st.selectbox("👷 Nombre del Técnico:", lista_tecnicos)
+# --- BLOQUEO DE NOMBRE ---
+# Si ya hay algo en el carrito, bloqueamos el selector de nombre
+esta_bloqueado = len(st.session_state.carrito) > 0
+
+tecnico = st.selectbox(
+    "👷 Nombre del Técnico:", 
+    lista_tecnicos, 
+    disabled=esta_bloqueado,
+    help="Para cambiar de nombre, debes vaciar el carrito primero."
+)
 
 # --- FORMULARIO DE ENTRADA ---
 with st.form("formulario_pedido", clear_on_submit=True):
@@ -67,36 +74,34 @@ with st.form("formulario_pedido", clear_on_submit=True):
     
     if boton_agregar:
         if tecnico == "Seleccionar...":
-            st.error("⚠️ Por favor, selecciona un Técnico de la lista.")
+            st.error("⚠️ Debes seleccionar un nombre primero.")
         else:
-            # Separar código y nombre del material
             partes = seleccion.split(" ", 1)
             cod = partes[0]
             nom = partes[1] if len(partes) > 1 else ""
 
-            # Guardar en la lista interna
             st.session_state.carrito.append({
                 "Tecnico": tecnico,
                 "Codigo": cod,
                 "Articulo": nom,
                 "Cantidad": cantidad
             })
-            st.toast(f"Agregado: {cod}")
+            st.rerun() # Recargamos para que se bloquee el selector de técnico inmediatamente
 
 # --- RESUMEN Y ENVÍO ---
 if st.session_state.carrito:
-    st.subheader(f"🛒 Pedido actual de: {tecnico}")
+    st.subheader(f"🛒 Revisión de pedido: {tecnico}")
     df_pedido = pd.DataFrame(st.session_state.carrito)
     st.table(df_pedido)
     
     col_a, col_b = st.columns(2)
     with col_a:
-        if st.button("🗑️ Limpiar Todo"):
+        if st.button("🗑️ Cancelar / Borrar todo"):
             st.session_state.carrito = []
             st.rerun()
 
     with col_b:
-        if st.button("🚀 Finalizar y Enviar Pedido"):
+        if st.button("🚀 CONFIRMAR Y ENVIAR"):
             try:
                 conn = st.connection("gsheets", type=GSheetsConnection)
                 
@@ -109,11 +114,12 @@ if st.session_state.carrito:
                 actualizado = pd.concat([existente, df_pedido], ignore_index=True)
                 conn.update(worksheet="Pedidos", data=actualizado)
                 
+                st.success("✅ ¡Pedido enviado! Gracias.")
                 st.balloons()
-                st.success("✅ ¡Pedido enviado correctamente!")
-                st.session_state.carrito = [] 
+                
+                # Limpiamos todo para que no pueda seguir agregando al mismo pedido
+                st.session_state.carrito = []
+                st.info("Reiniciando formulario para un nuevo pedido...")
+                st.rerun()
                 
             except Exception as e:
-                st.error(f"Error al enviar: {e}")
-else:
-    st.info("El carrito está vacío.")
