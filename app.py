@@ -19,10 +19,14 @@ hide_style = """
     """
 st.markdown(hide_style, unsafe_allow_html=True)
 
-# --- LÓGICA DE HORARIO (BLOQUEO HASTA LAS 15HS) ---
+# --- LÓGICA DE HORARIO (07:00 A 15:00 ARGENTINA) ---
 tz_arg = pytz.timezone('America/Argentina/Buenos_Aires')
-hora_actual = datetime.now(tz_arg).time()
-hora_apertura = datetime.strptime("15:00", "%H:%M").time()
+ahora_arg = datetime.now(tz_arg)
+hora_actual = ahora_arg.time()
+
+# Definimos los límites
+hora_inicio = datetime.strptime("07:00", "%H:%M").time()
+hora_fin = datetime.strptime("15:00", "%H:%M").time()
 
 # --- LÓGICA DE LOGIN ---
 if 'autenticado' not in st.session_state:
@@ -45,10 +49,11 @@ if not st.session_state.autenticado:
     st.text_input("Ingresa tu Email:", key="email_login", on_change=check_login)
     st.stop()
 
-# --- VALIDACIÓN DE HORARIO DESPUÉS DEL LOGIN ---
-if hora_actual < hora_apertura:
-    st.title("⏳ Sistema Cerrado")
-    st.warning(f"Hola {st.session_state.email_usuario}. Los pedidos se habilitan a las **15:00 hs**.")
+# --- VALIDACIÓN DE RANGO HORARIO ---
+# Si la hora actual NO está entre las 07:00 y las 15:00, bloqueamos.
+if not (hora_inicio <= hora_actual <= hora_fin):
+    st.title("🕒 Sistema Fuera de Horario")
+    st.warning(f"Hola {st.session_state.email_usuario}. El sistema opera de **07:00 a 15:00 hs**.")
     st.info(f"Hora actual en Argentina: **{hora_actual.strftime('%H:%M')}**")
     st.stop()
 
@@ -60,7 +65,7 @@ try:
     df_auth = conn.read(worksheet="Autorizaciones", ttl=0)
     if st.session_state.email_usuario in df_auth[df_auth['Estado'] == 'Bloqueado']['Email'].values:
         st.title("🚫 Acceso Restringido")
-        st.error("Ya registraste un pedido hoy. Acceso pausado.")
+        st.error("Ya registraste un pedido hoy. Acceso pausado hasta mañana.")
         st.stop()
 except:
     pass
@@ -141,7 +146,11 @@ if st.session_state.carrito:
             df_final = pd.DataFrame(st.session_state.carrito)
             
             # 1. Guardar Pedidos
-            existente = conn.read(worksheet="Pedidos", ttl=0).dropna(how='all')
+            try:
+                existente = conn.read(worksheet="Pedidos", ttl=0).dropna(how='all')
+            except:
+                existente = pd.DataFrame(columns=["Tecnico", "Codigo", "Articulo", "Cantidad"])
+                
             act_pedidos = pd.concat([existente, df_final], ignore_index=True)
             conn.update(worksheet="Pedidos", data=act_pedidos)
             
