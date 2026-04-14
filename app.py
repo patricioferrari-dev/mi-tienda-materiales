@@ -14,7 +14,6 @@ if 'email_usuario' not in st.session_state:
 def check_login():
     email_ingresado = st.session_state.email_login.lower().strip()
     try:
-        # Obtenemos la lista de autorizados desde los Secrets
         lista_blanca = st.secrets["usuarios_autorizados"]["emails"]
         if email_ingresado in [e.lower() for e in lista_blanca]:
             st.session_state.autenticado = True
@@ -22,30 +21,25 @@ def check_login():
         else:
             st.error("🚫 Correo no autorizado.")
     except Exception:
-        st.error("⚠️ Error: Configura los correos en los Secrets de Streamlit.")
+        st.error("⚠️ Error: Configura los correos en los Secrets.")
 
-# Pantalla de Login
 if not st.session_state.autenticado:
     st.title("🔐 Acceso")
     st.text_input("Email:", key="email_login", on_change=check_login)
     st.stop()
 
-# Conexión a GSheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- VERIFICAR SI ESTÁ BLOQUEADO ---
+# Verificación de Bloqueo
 try:
     df_auth = conn.read(worksheet="Autorizaciones", ttl=0)
     if st.session_state.email_usuario in df_auth[df_auth['Estado'] == 'Bloqueado']['Email'].values:
         st.title("🚫 Acceso Restringido")
         st.warning(f"Hola {st.session_state.email_usuario}, ya registraste un pedido.")
-        st.info("Tu acceso está bloqueado hasta que el administrador te autorice nuevamente.")
         st.stop()
 except Exception:
-    # Si la hoja no existe, simplemente permitimos el paso
     pass
 
-# --- DISEÑO DEL FORMULARIO ---
 st.title("📦 Formulario de Pedidos")
 st.success(f"👷 Técnico: **{st.session_state.email_usuario}**")
 
@@ -79,16 +73,20 @@ materiales_disponibles = [
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
 
+# --- EL TRUCO PARA LA FLUIDEZ ---
+# Al poner el selectbox fuera del form (o con on_change), obligamos al usuario a interactuar.
+# Aquí lo mantenemos simple para que no pierdas el estilo:
+
 with st.form("formulario_pedido", clear_on_submit=True):
     col1, col2 = st.columns([2, 1])
     with col1:
-        seleccion = st.selectbox("Artículo:", materiales_disponibles)
+        # El cambio de artículo no saltará solo, pero el diseño invita a seguir a la derecha.
+        seleccion = st.selectbox("1. Selecciona Artículo:", materiales_disponibles)
     with col2:
-        cantidad_str = st.text_input("Cantidad:", placeholder="0")
+        # El placeholder ayuda a saber que este es el siguiente paso.
+        cantidad_str = st.text_input("2. Cantidad:", placeholder="Escribe aquí...")
     
-    boton_agregar = st.form_submit_button("➕ Agregar al pedido")
-    
-    if boton_agregar:
+    if st.form_submit_button("➕ AGREGAR AL PEDIDO"):
         try:
             cantidad_num = int(cantidad_str)
             if cantidad_num > 0:
@@ -101,46 +99,40 @@ with st.form("formulario_pedido", clear_on_submit=True):
                 })
                 st.rerun()
             else:
-                st.error("La cantidad debe ser mayor a 0.")
+                st.error("Mínimo 1")
         except ValueError:
-            st.error("Por favor, ingresa un número válido.")
+            st.error("Ingresa un número")
 
-# --- RESUMEN Y ENVÍO ---
+# Resumen y Envío
 if st.session_state.carrito:
-    st.subheader("🛒 Pedido actual")
+    st.subheader("🛒 Resumen")
     df_pedido = pd.DataFrame(st.session_state.carrito)
     st.table(df_pedido)
     
-    col_a, col_b = st.columns(2)
-    with col_a:
-        if st.button("🗑️ Vaciar Carrito"):
+    if st.button("🚀 ENVIAR Y FINALIZAR"):
+        try:
+            # Guardar Pedidos
+            try:
+                existente = conn.read(worksheet="Pedidos", ttl=0).dropna(how='all')
+            except Exception:
+                existente = pd.DataFrame(columns=["Tecnico", "Codigo", "Articulo", "Cantidad"])
+            
+            actualizado = pd.concat([existente, df_pedido], ignore_index=True)
+            conn.update(worksheet="Pedidos", data=actualizado)
+            
+            # Bloquear
+            try:
+                auth_ex = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+            except Exception:
+                auth_ex = pd.DataFrame(columns=["Email", "Estado"])
+            
+            nuevo_b = pd.DataFrame([{"Email": st.session_state.email_usuario, "Estado": "Bloqueado"}])
+            auth_act = pd.concat([auth_ex, nuevo_b], ignore_index=True)
+            conn.update(worksheet="Autorizaciones", data=auth_act)
+            
+            st.balloons()
+            st.success("✅ Pedido enviado y acceso bloqueado.")
             st.session_state.carrito = []
             st.rerun()
-    with col_b:
-        if st.button("🚀 ENVIAR Y FINALIZAR"):
-            try:
-                # 1. Guardar Pedidos
-                try:
-                    existente = conn.read(worksheet="Pedidos", ttl=0).dropna(how='all')
-                except Exception:
-                    existente = pd.DataFrame(columns=["Tecnico", "Codigo", "Articulo", "Cantidad"])
-                
-                actualizado = pd.concat([existente, df_pedido], ignore_index=True)
-                conn.update(worksheet="Pedidos", data=actualizado)
-                
-                # 2. Registrar Bloqueo
-                try:
-                    auth_ex = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
-                except Exception:
-                    auth_ex = pd.DataFrame(columns=["Email", "Estado"])
-                
-                nuevo_b = pd.DataFrame([{"Email": st.session_state.email_usuario, "Estado": "Bloqueado"}])
-                auth_act = pd.concat([auth_ex, nuevo_b], ignore_index=True)
-                conn.update(worksheet="Autorizaciones", data=auth_act)
-                
-                st.balloons()
-                st.success("✅ Pedido enviado. Acceso bloqueado.")
-                st.session_state.carrito = []
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error al procesar: {e}")
+        except Exception as e:
+            st.error(f"Error: {e}")
