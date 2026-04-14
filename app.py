@@ -38,7 +38,6 @@ def validar_email():
         lista_autorizados = st.secrets["usuarios_autorizados"]["emails"]
         if email in [e.lower() for e in lista_autorizados]:
             st.session_state.email_usuario = email
-            st.session_state.paso_login = "password"
         else:
             st.error("🚫 Correo no autorizado en la lista blanca.")
     except:
@@ -48,46 +47,58 @@ def validar_email():
 if not st.session_state.autenticado:
     st.title("🔐 Acceso al Sistema")
     
-    # Paso 1: Ingresar Email
     if 'email_usuario' not in st.session_state:
         st.text_input("Correo Electrónico:", key="email_input", on_change=validar_email)
         st.stop()
 
-    # Paso 2: Verificar si el usuario ya existe en DB_Tecnicos
+    # Leer DB de técnicos registrados y el Padrón de DNIs autorizados
     df_db = conn.read(worksheet="DB_Tecnicos", ttl=0).dropna(how='all')
     user_info = df_db[df_db['Email'] == st.session_state.email_usuario]
 
     if user_info.empty:
-        # REGISTRO (Si el email está autorizado pero no en la DB)
-        st.warning(f"Hola {st.session_state.email_usuario}, completa tu registro por única vez:")
+        # --- PROCESO DE REGISTRO ---
+        st.warning(f"Hola {st.session_state.email_usuario}, no estás registrado. Completa tus datos:")
+        
         with st.form("registro_nuevo"):
             col_a, col_b = st.columns(2)
-            nombre = col_a.text_input("Nombre:")
-            apellido = col_b.text_input("Apellido:")
-            dni = col_a.text_input("DNI:")
+            dni_reg = col_a.text_input("DNI (Sin puntos):")
+            nombre = col_b.text_input("Nombre:")
+            apellido = col_a.text_input("Apellido:")
             celular = col_b.text_input("Celular:")
             password = st.text_input("Crea una Contraseña:", type="password")
             
-            if st.form_submit_button("Finalizar Registro"):
-                if all([nombre, apellido, dni, celular, password]):
-                    nuevo_perfil = pd.DataFrame([{
-                        "Email": st.session_state.email_usuario,
-                        "Nombre": nombre.title(),
-                        "Apellido": apellido.title(),
-                        "Celular": celular,
-                        "DNI": dni,
-                        "Contrasena": password
-                    }])
-                    df_actualizado = pd.concat([df_db, nuevo_perfil], ignore_index=True)
-                    conn.update(worksheet="DB_Tecnicos", data=df_actualizado)
-                    st.success("✅ Registro exitoso. ¡Ahora ingresa con tu contraseña!")
-                    time.sleep(2)
-                    st.rerun()
+            if st.form_submit_button("Validar y Finalizar Registro"):
+                if all([nombre, apellido, dni_reg, celular, password]):
+                    # VALIDACIÓN DE DNI CONTRA EL PADRÓN
+                    try:
+                        df_padron = conn.read(worksheet="Padron_DNI", ttl=0).dropna(how='all')
+                        # Convertimos a string para comparar sin errores de tipo
+                        lista_dnis_validos = df_padron['DNI'].astype(str).tolist()
+                        
+                        if dni_reg.strip() in lista_dnis_validos:
+                            # Proceder al registro
+                            nuevo_perfil = pd.DataFrame([{
+                                "Email": st.session_state.email_usuario,
+                                "Nombre": nombre.title(),
+                                "Apellido": apellido.title(),
+                                "Celular": celular,
+                                "DNI": dni_reg.strip(),
+                                "Contrasena": password
+                            }])
+                            df_actualizado = pd.concat([df_db, nuevo_perfil], ignore_index=True)
+                            conn.update(worksheet="DB_Tecnicos", data=df_actualizado)
+                            st.success("✅ DNI Verificado. Registro exitoso.")
+                            time.sleep(2)
+                            st.rerun()
+                        else:
+                            st.error("❌ El DNI ingresado no figura en el padrón de personal autorizado. Contacte al supervisor.")
+                    except Exception as e:
+                        st.error(f"Error al validar DNI: {e}")
                 else:
                     st.error("Todos los campos son obligatorios.")
         st.stop()
     else:
-        # LOGIN CON CONTRASEÑA (Si ya existe en la DB)
+        # --- PROCESO DE LOGIN ---
         pwd_input = st.text_input(f"Hola {user_info.iloc[0]['Nombre']}, ingresa tu contraseña:", type="password")
         if st.button("Ingresar"):
             if str(pwd_input) == str(user_info.iloc[0]['Contrasena']):
@@ -120,7 +131,7 @@ if st.session_state.seccion == "Menu":
             st.rerun()
     st.stop()
 
-# 5. VALIDACIONES PARA MATERIALES (L-M-V | 07:00 a 15:00 ARG)
+# 5. VALIDACIONES PARA MATERIALES (L-M-V | 07:00 a 15:00)
 if st.session_state.seccion == "Materiales":
     tz_arg = pytz.timezone('America/Argentina/Buenos_Aires')
     ahora_arg = datetime.now(tz_arg)
@@ -135,7 +146,7 @@ if st.session_state.seccion == "Materiales":
 listas = {
     "Materiales": ["13008 CONTROL", "30032 CABLE", "31025 PRECINTO"],
     "Herramientas": ["H001 PINZA", "H002 ALICATE", "H003 PELACABLE"],
-    "Indumentaria": ["I001 PANTALON T42", "I002 CHOMBA L", "I003 BOTINES"]
+    "Indumentaria": ["I001 PANTALON T42", "I002 CHOMBA L"]
 }
 items_disponibles = listas.get(st.session_state.seccion, [])
 
