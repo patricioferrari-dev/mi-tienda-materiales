@@ -9,11 +9,32 @@ st.write("Selecciona los materiales y la cantidad que necesites.")
 
 # 1. Lista de materiales y precios (opcional)
 materiales_disponibles = {
-    "Cemento Gris (Saco 50kg)": 150.00,
-    "Arena de Río (m3)": 450.00,
-    "Ladrillo Rojo (Millar)": 2800.00,
-    "Varilla 3/8 (Tramo)": 120.00,
-    "Pintura Blanca (Cubeta)": 1100.00
+    "13008	CONTROL REMOTO PARA DECO SAGECOM DCWMI303. CON BOT": 
+    "30032	CABLE COAXIL RG6 QUADSHIELD NEGRO CON PORTANTE":
+    "31025	PRECINTO PLÁSTICO NEGRO (150 X 5.5 MM) , CON PROTE": 
+    "31026	TARUGO DE 8MM PARA LADRILLO HUECO": 
+    "31027	PITON CON TOPE PARA TARUGO DE 8MM": 
+    "32085	PASAPARED BLANCO PARA RG6": 
+    "32098	SILOC TRANSPARENTE CARTUCHO DE 300GR": 
+    "35042	PRECINTO S20 AZUL FO 2 VIAS": 
+    "51044	FUENTE P/DECO SAGEMCOM HD": 
+    "51046	Fuente alimentacion 12V-1,5A / SEI Robotics SEI800": 
+    "51051	FUENTE 3,1": 
+    "70016	CABLE DE RED UTP PARA PC (PATCHCORD)":
+    "70098	CABLE HDMI":
+    "70220	CABLE RCA A PLUG 3,5":
+    "87025	CONECTOR DE COMPRESIÓN PARA RG6":
+    "87026	O´RING PARA CONECTORES DE RG 6 (SELLO)":
+    "87031	DIVISOR DE 3 BOCAS - SPLITTER X3":
+    "90002	PILA AAA PARA CONTROL REMOTO":
+    "90071	CINTA AUTOVULCANIZANTE":
+    "90072	GRAMPA NEGRA  CON CLAVO PARA INTERIOR (GRAMPITA)":
+    "90090	DIVISOR DE 2 BOCAS ":
+    "90106	FILTRO PARA ALTOS 102 MHZ":
+    "31154	Etiqueta de identificacion para Drop FO (Kit doble)":
+    "012009U  Fuente Alimentacion 12V - 1A / Extensor Wifi AIRTIES AIR4960X":
+    
+    
 }
 
 # Inicializar el carrito en la sesión del navegador
