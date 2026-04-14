@@ -53,7 +53,7 @@ try:
 except Exception:
     pass
 
-# --- LISTA DE MATERIALES ---
+# --- FORMULARIO DE PEDIDO ---
 st.title("📦 Formulario de Pedidos")
 st.success(f"👷 Técnico: **{st.session_state.email_usuario}**")
 
@@ -87,7 +87,6 @@ materiales_disponibles = [
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
 
-# --- FORMULARIO ---
 with st.form("formulario_pedido", clear_on_submit=True):
     col1, col2 = st.columns([2, 1])
     with col1:
@@ -120,7 +119,7 @@ if st.session_state.carrito:
     
     col_a, col_b = st.columns(2)
     with col_a:
-        if st.button("🗑️ Vaciar Carrito"):
+        if st.button("🗑️ Vaciar"):
             st.session_state.carrito = []
             st.rerun()
     with col_b:
@@ -141,4 +140,10 @@ if st.session_state.carrito:
                 except Exception:
                     auth_ex = pd.DataFrame(columns=["Email", "Estado"])
                 
-                nuevo
+                nuevo_b = pd.DataFrame([{"Email": st.session_state.email_usuario, "Estado": "Bloqueado"}])
+                auth_final = pd.concat([auth_ex, nuevo_b], ignore_index=True)
+                conn.update(worksheet="Autorizaciones", data=auth_final)
+                
+                st.balloons()
+                st.success("✅ Pedido enviado. Acceso bloqueado.")
+                st
