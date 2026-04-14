@@ -2,47 +2,50 @@ import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 
-# Configuración básica
+# Configuración de la página
 st.set_page_config(page_title="Sistema de Pedidos", page_icon="📦")
 
-# --- LOGIN ---
+# --- LÓGICA DE LOGIN Y BLOQUEO ---
 if 'autenticado' not in st.session_state:
     st.session_state.autenticado = False
+if 'email_usuario' not in st.session_state:
+    st.session_state.email_usuario = ""
 
 def check_login():
-    email = st.session_state.email_login.lower().strip()
+    email_ingresado = st.session_state.email_login.lower().strip()
     try:
-        lista = st.secrets["usuarios_autorizados"]["emails"]
-        if email in [e.lower() for e in lista]:
+        lista_blanca = st.secrets["usuarios_autorizados"]["emails"]
+        if email_ingresado in [e.lower() for e in lista_blanca]:
             st.session_state.autenticado = True
-            st.session_state.email_usuario = email
+            st.session_state.email_usuario = email_ingresado
     except:
-        st.error("Error en configuración de correos.")
+        st.error("Error en Secrets.")
 
 if not st.session_state.autenticado:
     st.title("🔐 Acceso")
     st.text_input("Email:", key="email_login", on_change=check_login)
     st.stop()
 
-# --- CONEXIÓN Y BLOQUEO ---
+# Conexión
 conn = st.connection("gsheets", type=GSheetsConnection)
 
+# --- VERIFICACIÓN DE BLOQUEO ---
 try:
     df_auth = conn.read(worksheet="Autorizaciones", ttl=0)
     if st.session_state.email_usuario in df_auth[df_auth['Estado'] == 'Bloqueado']['Email'].values:
-        st.warning("⚠️ Ya realizaste un pedido. Acceso bloqueado.")
+        st.warning("⚠️ Usuario bloqueado. Pedido ya realizado.")
         st.stop()
 except:
     pass
 
 st.title("📦 Formulario de Pedidos")
+st.caption(f"Conectado como: {st.session_state.email_usuario}")
 
 # --- LISTA DE MATERIALES ---
-materiales = [
-    "--- Seleccionar artículo ---",
+materiales_disponibles = [
     "13008 CONTROL REMOTO PARA DECO SAGECOM DCWMI303. CON BOT",
     "30032 CABLE COAXIL RG6 QUADSHIELD NEGRO CON PORTANTE",
-    "31025 PRECINTO PLÁSTICO NEGRO (150 X 5.5 MM)",
+    "31025 PRECINTO PLÁSTICO NEGRO (150 X 5.5 MM) , CON PROTE",
     "31026 TARUGO DE 8MM PARA LADRILLO HUECO",
     "31027 PITON CON TOPE PARA TARUGO DE 8MM",
     "32085 PASAPARED BLANCO PARA RG6",
@@ -69,58 +72,68 @@ materiales = [
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
 
-# --- CARGA DINÁMICA (SIN FORMULARIO PARA GANAR FLUIDEZ) ---
-col1, col2 = st.columns([2, 1])
+# --- TRUCO DE FLUIDEZ: SELECCIÓN FUERA DEL FORMULARIO ---
+# Al seleccionar aquí, la app se recarga y el foco baja al siguiente input
+seleccion = st.selectbox("1. Selecciona el artículo:", ["--- Elegir material ---"] + materiales_disponibles)
 
-with col1:
-    # El usuario elige el artículo
-    art_sel = st.selectbox("Artículo:", materiales, key="sel_art")
-
-with col2:
-    # Solo si eligió algo distinto al mensaje inicial, habilitamos la cantidad
-    if art_sel != "--- Seleccionar artículo ---":
-        cant_input = st.text_input("Cantidad:", key="cant_input", placeholder="Ej: 5")
+if seleccion != "--- Elegir material ---":
+    # Formulario solo para la cantidad y el botón
+    with st.form("form_cantidad", clear_on_submit=True):
+        # El text_input vacío permite escribir de inmediato
+        cantidad_str = st.text_input("2. Escribe la cantidad:", placeholder="Ingresa número...")
         
-        if cant_input: # Si escribió algo, aparece el botón
-            if st.button("➕ AGREGAR"):
-                try:
-                    c_num = int(cant_input)
-                    partes = art_sel.split(" ", 1)
+        btn_agregar = st.form_submit_button("➕ AGREGAR AL CARRITO")
+        
+        if btn_agregar:
+            try:
+                can_num = int(cantidad_str)
+                if can_num > 0:
+                    partes = seleccion.split(" ", 1)
                     st.session_state.carrito.append({
                         "Tecnico": st.session_state.email_usuario,
                         "Codigo": partes[0],
                         "Articulo": partes[1] if len(partes) > 1 else "",
-                        "Cantidad": c_num
+                        "Cantidad": can_num
                     })
-                    st.rerun() # Limpia todo para el siguiente artículo
-                except:
-                    st.error("Usa números")
+                    st.success(f"Añadido: {partes[0]}")
+                    st.rerun() # Esto limpia el formulario y vuelve arriba
+                else:
+                    st.error("Mínimo 1")
+            except ValueError:
+                st.error("Escribe solo números")
 
 # --- RESUMEN Y ENVÍO ---
 if st.session_state.carrito:
-    st.subheader("🛒 Pedido actual")
-    df_pedido = pd.DataFrame(st.session_state.carrito)
-    st.table(df_pedido)
+    st.divider()
+    st.subheader("🛒 Tu pedido actual")
+    df_p = pd.DataFrame(st.session_state.carrito)
+    st.table(df_p)
     
-    if st.button("🚀 ENVIAR PEDIDO Y FINALIZAR"):
-        try:
-            # Guardar Pedidos
-            ex_p = conn.read(worksheet="Pedidos", ttl=0).dropna(how='all')
-            nuevo_p = pd.concat([ex_p, df_pedido], ignore_index=True)
-            conn.update(worksheet="Pedidos", data=nuevo_p)
-            
-            # Registrar Bloqueo
-            try:
-                ex_a = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
-            except:
-                ex_a = pd.DataFrame(columns=["Email", "Estado"])
-            
-            bloqueo = pd.DataFrame([{"Email": st.session_state.email_usuario, "Estado": "Bloqueado"}])
-            nueva_a = pd.concat([ex_a, bloqueo], ignore_index=True)
-            conn.update(worksheet="Autorizaciones", data=nueva_a)
-            
-            st.balloons()
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🗑️ Vaciar"):
             st.session_state.carrito = []
             st.rerun()
-        except Exception as e:
-            st.error(f"Error: {e}")
+    with col2:
+        if st.button("🚀 ENVIAR Y BLOQUEAR ACCESO"):
+            try:
+                # Guardar Pedidos
+                ex_ped = conn.read(worksheet="Pedidos", ttl=0).dropna(how='all')
+                act_ped = pd.concat([ex_ped, df_p], ignore_index=True)
+                conn.update(worksheet="Pedidos", data=act_ped)
+                
+                # Bloquear Usuario
+                try:
+                    ex_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+                except:
+                    ex_auth = pd.DataFrame(columns=["Email", "Estado"])
+                
+                nuevo_b = pd.DataFrame([{"Email": st.session_state.email_usuario, "Estado": "Bloqueado"}])
+                act_auth = pd.concat([ex_auth, nuevo_b], ignore_index=True)
+                conn.update(worksheet="Autorizaciones", data=act_auth)
+                
+                st.balloons()
+                st.session_state.carrito = []
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error: {e}")
