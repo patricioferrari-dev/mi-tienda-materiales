@@ -4,7 +4,7 @@ from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
 import pytz
 import time
-import re  # Librería para validar el email
+import re
 
 # 1. CONFIGURACIÓN DE PÁGINA Y CSS
 st.set_page_config(page_title="SGM - Gestión de Pedidos", page_icon="🏢", layout="wide")
@@ -30,7 +30,7 @@ def es_email_valido(email):
 def es_horario_permitido():
     tz_ba = pytz.timezone('America/Argentina/Buenos_Aires')
     ahora = datetime.now(tz_ba)
-    dia_semana = ahora.weekday() 
+    dia_semana = ahora.weekday() # 0=Lunes, 2=Miercoles, 4=Viernes
     hora_actual = ahora.hour
     return dia_semana in [0, 2, 4] and 7 <= hora_actual < 15
 
@@ -46,7 +46,6 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 # 4. SISTEMA DE ACCESO
 if not st.session_state.autenticado:
-    
     if st.session_state.reestablecer:
         st.title("🔑 Asignar Acceso")
         user = st.session_state.user_a_reestablecer
@@ -54,42 +53,30 @@ if not st.session_state.autenticado:
         
         with st.form("form_reset"):
             n_mail = st.text_input("Asignar Email:").strip().lower()
-            n_cel = st.text_input("Celular (10 dígitos sin 0 ni 15):", help="Ejemplo: 1122334455").strip()
+            n_cel = st.text_input("Celular (10 dígitos sin 0 ni 15):").strip()
             nueva_p = st.text_input("Nueva Contraseña:", type="password")
             confirm_p = st.text_input("Confirmar Contraseña:", type="password")
             
             if st.form_submit_button("GUARDAR Y ACTIVAR CUENTA"):
-                # VALIDACIONES NUEVAS
                 cel_limpio = n_cel.replace(" ", "").replace("-", "")
-                
                 if not es_email_valido(n_mail):
-                    st.error("⚠️ El formato del email no es válido (ejemplo@correo.com).")
-                elif len(cel_limpio) != 10 or not cel_limpio.isdigit():
-                    st.error("⚠️ El celular debe tener exactamente 10 dígitos numéricos.")
-                elif nueva_p != confirm_p or len(nueva_p) == 0:
-                    st.error("⚠️ Las contraseñas no coinciden o están vacías.")
+                    st.error("⚠️ Email no válido.")
+                elif len(cel_limpio) != 10:
+                    st.error("⚠️ El celular debe tener 10 dígitos.")
+                elif nueva_p != confirm_p:
+                    st.error("⚠️ Las contraseñas no coinciden.")
                 else:
-                    # Si todo está OK, procedemos a guardar
                     df_db = conn.read(worksheet="DB_Tecnicos", ttl=0)
-                    for col in ['Email', 'Contrasena', 'Celular']:
-                        df_db[col] = df_db[col].astype(object)
-                    
                     df_db['DNI_STR'] = df_db['DNI'].astype(str).str.split('.').str[0].str.strip()
-                    idx_list = df_db.index[df_db['DNI_STR'] == str(user['DNI']).split('.')[0]].tolist()
-                    
-                    if idx_list:
-                        idx = idx_list[0]
-                        df_db.at[idx, 'Contrasena'] = str(nueva_p)
-                        df_db.at[idx, 'Email'] = str(n_mail)
-                        df_db.at[idx, 'Celular'] = str(cel_limpio)
+                    idx = df_db.index[df_db['DNI_STR'] == str(user['DNI']).split('.')[0]].tolist()
+                    if idx:
+                        df_db.at[idx[0], 'Contrasena'] = str(nueva_p)
+                        df_db.at[idx[0], 'Email'] = str(n_mail)
+                        df_db.at[idx[0], 'Celular'] = str(cel_limpio)
                         conn.update(worksheet="DB_Tecnicos", data=df_db.drop(columns=['DNI_STR']))
-                        st.success("✅ Cuenta activada. Ya puedes ingresar.")
+                        st.success("✅ Cuenta activada.")
                         st.session_state.reestablecer = False
                         time.sleep(2); st.rerun()
-                    else:
-                        st.error("Error al localizar el DNI en la base.")
-
-        if st.button("Volver"): st.session_state.reestablecer = False; st.rerun()
 
     elif st.session_state.modo_registro:
         st.title("📝 Registro de Usuario")
@@ -120,14 +107,12 @@ if not st.session_state.autenticado:
                 real_pass = str(user_match.iloc[0].get('Contrasena', '')).strip()
                 if real_pass.lower() in ["", "nan", "none"]:
                     st.session_state.user_a_reestablecer = user_match.iloc[0].to_dict()
-                    st.session_state.reestablecer = True
-                    st.rerun()
+                    st.session_state.reestablecer = True; st.rerun()
                 elif real_pass == u_pass:
                     st.session_state.autenticado = True
                     st.session_state.datos_usuario = user_match.iloc[0].to_dict()
                     st.rerun()
                 else: st.error("Contraseña incorrecta.")
-            else: st.error("Usuario no encontrado.")
         if c2.button("Registrarme", use_container_width=True): st.session_state.modo_registro = True; st.rerun()
     st.stop()
 
@@ -142,16 +127,30 @@ dni_actual = str(st.session_state.datos_usuario.get('DNI', '')).split(".")[0].st
 if st.session_state.seccion == "Menu":
     st.title("🏢 Panel de Control")
     st.write(f"Operador: **{st.session_state.datos_usuario.get('Nombre')} {st.session_state.datos_usuario.get('Apellido')}**")
+    
     if dni_actual == "1111111":
         c1, c2 = st.columns(2)
         if c1.button("📚\nLIBRERÍA"): cambiar_seccion("Insumos_Libreria"); st.rerun()
         if c2.button("🧼\nLIMPIEZA"): cambiar_seccion("Insumos_Limpieza"); st.rerun()
     else:
         c1, c2, c3 = st.columns(3)
+        
+        # --- LÓGICA DE BLOQUEO/AUTORIZACIÓN PARA MATERIALES ---
+        df_auth = conn.read(worksheet="Autorizaciones", ttl=0)
+        df_auth['DNI_STR'] = df_auth['DNI'].astype(str).str.split('.').str[0].str.strip()
+        auth_status = df_auth[df_auth['DNI_STR'] == dni_actual]
+        
+        # Verificamos si existe en la hoja y si el estado es "ok"
+        esta_autorizado = not auth_status.empty and str(auth_status.iloc[0]['Estado']).lower() == "ok"
+        
         if es_horario_permitido():
-            if c1.button("📦\nMATERIALES"): cambiar_seccion("Materiales"); st.rerun()
+            if esta_autorizado:
+                if c1.button("📦\nMATERIALES"): cambiar_seccion("Materiales"); st.rerun()
+            else:
+                c1.button("🚫\nYA PEDIDO", disabled=True, help="Máximo 1 pedido permitido. Contacte al administrador.")
         else:
-            c1.button("🔒\nMAT. CERRADO", disabled=True)
+            c1.button("🔒\nMAT. CERRADO", disabled=True, help="Disponible Lun, Mie, Vie de 07:00 a 15:00")
+        
         if c2.button("🔧\nHERRAMIENTAS"): cambiar_seccion("Herramientas"); st.rerun()
         if c3.button("👕\nINDUMENTARIA"): cambiar_seccion("Indumentaria"); st.rerun()
     st.stop()
@@ -191,7 +190,7 @@ with tab1:
                     "Nombre": st.session_state.datos_usuario.get('Nombre'),
                     "Apellido": st.session_state.datos_usuario.get('Apellido'),
                     "Celular": st.session_state.datos_usuario.get('Celular'),
-                    "DNI": st.session_state.datos_usuario.get('DNI'),
+                    "DNI": dni_actual,
                     "Articulo": sel, "Cantidad": int(cant), "Motivo": motivo
                 })
                 st.rerun()
@@ -213,7 +212,28 @@ with tab2:
                 st.session_state.carrito.pop(idx); st.rerun()
         
         if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
+            # 1. Guardar el pedido en la hoja correspondiente
             df_new = pd.DataFrame(st.session_state.carrito)
             df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
             conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new], ignore_index=True))
-            st.success("Enviado."); st.session_state.carrito = []; time.sleep(1.5); st.rerun()
+            
+            # 2. SI ES MATERIALES, BLOQUEAR AL USUARIO EN EL EXCEL
+            if st.session_state.seccion == "Materiales":
+                df_auth_update = conn.read(worksheet="Autorizaciones", ttl=0)
+                df_auth_update['DNI_STR'] = df_auth_update['DNI'].astype(str).str.split('.').str[0].str.strip()
+                idx_auth = df_auth_update.index[df_auth_update['DNI_STR'] == dni_actual].tolist()
+                
+                if idx_auth:
+                    # Cambiamos el estado a bloqueado
+                    df_auth_update.at[idx_auth[0], 'Estado'] = "bloqueado"
+                    conn.update(worksheet="Autorizaciones", data=df_auth_update.drop(columns=['DNI_STR']))
+                else:
+                    # Si por alguna razón no estaba en la lista, lo agregamos como bloqueado
+                    nueva_fila = pd.DataFrame([{"DNI": dni_actual, "Estado": "bloqueado"}])
+                    conn.update(worksheet="Autorizaciones", data=pd.concat([df_auth_update.drop(columns=['DNI_STR']), nueva_fila], ignore_index=True))
+
+            st.success("✅ Pedido enviado. Tu acceso a materiales ha sido bloqueado hasta nueva autorización.")
+            st.session_state.carrito = []
+            time.sleep(2)
+            st.session_state.seccion = "Menu"
+            st.rerun()
