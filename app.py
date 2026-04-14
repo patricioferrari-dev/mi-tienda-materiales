@@ -7,25 +7,18 @@ import time
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="SGM - Gestión", page_icon="🏢", layout="wide")
 
-# 2. CSS PARA COMPACIDAD MÁXIMA Y DISEÑO LIMPIO
+# 2. CSS PARA COMPACIDAD Y ESTILO
 st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
     .block-container { max-width: 800px; padding-top: 1rem; }
-
-    /* Formulario de carga */
     [data-testid="stForm"] {
         background-color: #ffffff !important;
         border: 1px solid #e2e8f0 !important;
         padding: 15px !important;
         border-radius: 10px !important;
     }
-    .stSelectbox div[data-baseweb="select"], .stNumberInput div[data-baseweb="input"] {
-        background-color: #f1f5f9 !important;
-        border: 1px solid #cbd5e1 !important;
-    }
-
-    /* Planilla Ultra Compacta */
+    /* Estilo de la planilla mini */
     [data-testid="stHorizontalBlock"] { gap: 0px !important; margin-bottom: -1px !important; }
     div[data-testid="stColumn"] {
         border: 1px solid #e2e8f0 !important;
@@ -41,8 +34,6 @@ st.markdown("""
         width: 100%; text-align: center;
     }
     .cell-data { font-size: 12px; color: #334155; margin: 0; line-height: 1; }
-
-    /* Botón X Minimalista */
     div[data-testid="stColumn"] button {
         background-color: transparent !important;
         color: #ef4444 !important;
@@ -53,20 +44,17 @@ st.markdown("""
         font-weight: bold !important;
         padding: 0 !important;
     }
-    div[data-testid="stColumn"] button:hover { background-color: #fee2e2 !important; }
-
     #MainMenu, footer, header {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
-# 3. FUNCIONES DE CAMBIO DE SECCIÓN (Para evitar mezclar datos)
+# 3. FUNCIONES DE NAVEGACIÓN
 def cambiar_seccion(nueva_seccion):
-    # Si cambiamos de menú, vaciamos el carrito para no mezclar artículos
     if st.session_state.seccion != nueva_seccion:
         st.session_state.carrito = []
         st.session_state.seccion = nueva_seccion
 
-# 4. ESTADOS INICIALES
+# 4. ESTADOS
 if 'autenticado' not in st.session_state: st.session_state.autenticado = False
 if 'seccion' not in st.session_state: st.session_state.seccion = "Menu"
 if 'carrito' not in st.session_state: st.session_state.carrito = []
@@ -83,16 +71,18 @@ if not st.session_state.autenticado:
         valid = df_db[(df_db['Email'].str.lower() == user_mail.lower()) & (df_db['Contrasena'].astype(str) == user_pass)]
         if not valid.empty:
             st.session_state.autenticado = True
+            # Guardamos todos los datos del usuario para usarlos en el Excel
             st.session_state.datos_usuario = valid.iloc[0].to_dict()
             st.rerun()
     st.stop()
 
 # 6. MENÚ PRINCIPAL
+# Limpieza de DNI para la lógica de botones
 dni_val = str(st.session_state.datos_usuario.get('DNI', '')).split(".")[0].replace(" ", "")
 
 if st.session_state.seccion == "Menu":
     st.title("🏢 Panel de Control")
-    st.write(f"Operador: **{st.session_state.datos_usuario['Nombre']}**")
+    st.write(f"Operador: **{st.session_state.datos_usuario.get('Nombre')} {st.session_state.datos_usuario.get('Apellido', '')}**")
     
     if dni_val == "1111111":
         c1, c2 = st.columns(2)
@@ -105,8 +95,8 @@ if st.session_state.seccion == "Menu":
         if c3.button("👕\nINDUMENTARIA"): cambiar_seccion("Indumentaria"); st.rerun()
     st.stop()
 
-# 7. PANEL DE CARGA Y RESUMEN
-st.button("⬅️ Volver al Menú", on_click=lambda: cambiar_seccion("Menu"))
+# 7. TRABAJO POR SECCIÓN
+st.button("⬅️ Volver", on_click=lambda: cambiar_seccion("Menu"))
 st.markdown(f"### 📍 {st.session_state.seccion.replace('_', ' ')}")
 
 listas = {
@@ -118,58 +108,52 @@ listas = {
 }
 items = listas.get(st.session_state.seccion, [])
 
-t1, t2 = st.tabs(["📝 REGISTRAR CARGA", "📋 RESUMEN PEDIDO"])
+t1, t2 = st.tabs(["📝 REGISTRAR", "📋 RESUMEN PEDIDO"])
 
 with t1:
-    with st.form("f_registro", clear_on_submit=True):
+    with st.form("f_reg", clear_on_submit=True):
         sel = st.selectbox("Artículo:", items)
         cant = st.number_input("Cantidad:", min_value=1, step=1, value=1)
         if st.form_submit_button("AGREGAR", use_container_width=True):
-            # Limpiar nombre artículo
             art_nom = sel.split(" ", 1)[1] if " " in sel and "Insumos" not in st.session_state.seccion else sel
             
-            # Evitar duplicados en la lista actual
             if any(i['Articulo'] == art_nom for i in st.session_state.carrito):
-                st.error("Este artículo ya está en la lista.")
+                st.error("Ya existe en la lista.")
             else:
+                # AQUÍ SE AGREGAN LOS CAMPOS PARA EL EXCEL
                 st.session_state.carrito.append({
+                    "Fecha": datetime.now().strftime("%d/%m/%Y"),
+                    "DNI": st.session_state.datos_usuario.get('DNI'),
+                    "Apellido": st.session_state.datos_usuario.get('Apellido'),
+                    "Nombre": st.session_state.datos_usuario.get('Nombre'),
                     "Articulo": art_nom, 
-                    "Cantidad": int(cant),
-                    "Nombre": st.session_state.datos_usuario['Nombre'],
-                    "Fecha": datetime.now().strftime("%d/%m/%Y")
+                    "Cantidad": int(cant)
                 })
                 st.rerun()
 
 with t2:
     if not st.session_state.carrito:
-        st.info(f"No hay artículos para {st.session_state.seccion.replace('_', ' ')}.")
+        st.info("Lista vacía.")
     else:
-        # Cabecera
         h1, h2, h3 = st.columns([1, 6, 0.8])
         h1.markdown('<div class="header-box">CANT</div>', unsafe_allow_html=True)
         h2.markdown('<div class="header-box">DESCRIPCIÓN</div>', unsafe_allow_html=True)
         h3.markdown('<div class="header-box">ELIM</div>', unsafe_allow_html=True)
         
-        # Filas (usando copia para evitar errores de índice al borrar)
         for idx, item in enumerate(st.session_state.carrito):
             r1, r2, r3 = st.columns([1, 6, 0.8])
             r1.markdown(f'<div class="cell-data" style="text-align:center; width:100%">{item["Cantidad"]}</div>', unsafe_allow_html=True)
             r2.markdown(f'<div class="cell-data">{item["Articulo"]}</div>', unsafe_allow_html=True)
-            if r3.button("X", key=f"btn_{st.session_state.seccion}_{idx}"):
+            if r3.button("X", key=f"del_{st.session_state.seccion}_{idx}"):
                 st.session_state.carrito.pop(idx)
                 st.rerun()
 
-        st.write("")
-        if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
-            try:
-                df_new = pd.DataFrame(st.session_state.carrito)
-                # Se envía solo a la hoja correspondiente a la sección actual
-                df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
-                conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new]))
-                
-                st.success(f"Pedido de {st.session_state.seccion.replace('_', ' ')} enviado.")
-                st.session_state.carrito = [] # Limpiar tras enviar
-                time.sleep(1)
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error: {e}")
+        if st.button("🚀 ENVIAR PEDIDO", use_container_width=True):
+            df_new = pd.DataFrame(st.session_state.carrito)
+            df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
+            # El concat unirá los datos nuevos con los viejos respetando las columnas
+            conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new]))
+            st.success("Enviado con éxito.")
+            st.session_state.carrito = []
+            time.sleep(1)
+            st.rerun()
