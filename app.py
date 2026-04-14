@@ -6,9 +6,21 @@ from streamlit_gsheets import GSheetsConnection
 st.set_page_config(page_title="Sistema de Pedidos", page_icon="📦")
 
 st.title("📦 Formulario de Pedidos Online")
-st.write("Completa los datos del técnico y selecciona los materiales.")
+st.write("Selecciona tu nombre y los materiales para el pedido.")
 
-# 1. Lista de materiales
+# --- CONFIGURACIÓN DE LISTAS ---
+
+# 1. Lista de Técnicos (Agrega o quita nombres aquí)
+lista_tecnicos = [
+    "Seleccionar...",
+    "Juan Pérez",
+    "Ricardo Gómez",
+    "Marcos Rodríguez",
+    "Esteban Quito",
+    "Christian Díaz"
+]
+
+# 2. Lista de materiales
 materiales_disponibles = [
     "13008 CONTROL REMOTO PARA DECO SAGECOM DCWMI303. CON BOT",
     "30032 CABLE COAXIL RG6 QUADSHIELD NEGRO CON PORTANTE",
@@ -40,24 +52,22 @@ materiales_disponibles = [
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
 
-# --- ENTRADA DEL NOMBRE DEL TÉCNICO ---
-tecnico = st.text_input("👷 Nombre del Técnico:", placeholder="Escribe tu nombre...")
+# --- ENTRADA DEL NOMBRE DEL TÉCNICO (LISTA DESPLEGABLE) ---
+tecnico = st.selectbox("👷 Nombre del Técnico:", lista_tecnicos)
 
 # --- FORMULARIO DE ENTRADA ---
-# clear_on_submit=True limpia los campos del formulario tras agregar
 with st.form("formulario_pedido", clear_on_submit=True):
     col1, col2 = st.columns([2, 1])
     with col1:
         seleccion = st.selectbox("Selecciona el artículo:", materiales_disponibles)
     with col2:
-        # El campo de cantidad vuelve a 1 tras cada envío, listo para el próximo artículo
         cantidad = st.number_input("Cantidad:", min_value=1, step=1, value=1)
     
     boton_agregar = st.form_submit_button("Agregar al pedido")
     
     if boton_agregar:
-        if not tecnico:
-            st.error("⚠️ Por favor, ingresa el nombre del Técnico antes de agregar productos.")
+        if tecnico == "Seleccionar...":
+            st.error("⚠️ Por favor, selecciona un Técnico de la lista.")
         else:
             # Separar código y nombre del material
             partes = seleccion.split(" ", 1)
@@ -71,7 +81,7 @@ with st.form("formulario_pedido", clear_on_submit=True):
                 "Articulo": nom,
                 "Cantidad": cantidad
             })
-            st.toast(f"Agregado al carrito: {cod}")
+            st.toast(f"Agregado: {cod}")
 
 # --- RESUMEN Y ENVÍO ---
 if st.session_state.carrito:
@@ -88,27 +98,22 @@ if st.session_state.carrito:
     with col_b:
         if st.button("🚀 Finalizar y Enviar Pedido"):
             try:
-                # Conexión con Google Sheets usando la Service Account de los Secrets
                 conn = st.connection("gsheets", type=GSheetsConnection)
                 
-                # Intentar leer los datos previos para no borrar lo anterior
                 try:
                     existente = conn.read(worksheet="Pedidos", ttl=0)
                     existente = existente.dropna(how='all')
                 except:
                     existente = pd.DataFrame(columns=["Tecnico", "Codigo", "Articulo", "Cantidad"])
                 
-                # Concatenar pedido nuevo
                 actualizado = pd.concat([existente, df_pedido], ignore_index=True)
-                
-                # Subir a la nube
                 conn.update(worksheet="Pedidos", data=actualizado)
                 
                 st.balloons()
-                st.success("✅ ¡Pedido enviado correctamente al Excel!")
-                st.session_state.carrito = [] # Vaciar carrito tras éxito
+                st.success("✅ ¡Pedido enviado correctamente!")
+                st.session_state.carrito = [] 
                 
             except Exception as e:
                 st.error(f"Error al enviar: {e}")
 else:
-    st.info("El carrito está vacío. Empieza seleccionando materiales arriba.")
+    st.info("El carrito está vacío.")
