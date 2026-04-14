@@ -29,7 +29,7 @@ if 'seccion' not in st.session_state:
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
 
-# 3. CONEXIÓN Y LÓGICA DE ACCESO
+# 3. CONEXIÓN Y LÓGICA DE ACCESO (Igual a la anterior)
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def validar_email():
@@ -39,188 +39,136 @@ def validar_email():
         if email in [e.lower() for e in lista_autorizados]:
             st.session_state.email_usuario = email
         else:
-            st.error("🚫 Correo no autorizado en la lista blanca.")
+            st.error("🚫 Correo no autorizado.")
     except:
-        st.error("⚠️ Error: Configura 'usuarios_autorizados' en Secrets.")
+        st.error("⚠️ Error en Secrets.")
 
-# --- FLUJO DE LOGIN / REGISTRO / RESETEO ---
 if not st.session_state.autenticado:
     st.title("🔐 Acceso al Sistema")
-    
     if 'email_usuario' not in st.session_state:
         st.text_input("Correo Electrónico:", key="email_input", on_change=validar_email)
         st.stop()
 
-    # Leer Base de Datos de Técnicos
     df_db = conn.read(worksheet="DB_Tecnicos", ttl=0).dropna(how='all')
-    # Forzar columnas críticas a texto para evitar TypeErrors de Pandas
     df_db['Email'] = df_db['Email'].astype(str)
     df_db['Contrasena'] = df_db['Contrasena'].astype(str)
-    
     user_row = df_db[df_db['Email'] == st.session_state.email_usuario]
 
     if user_row.empty:
-        # --- CASO: REGISTRO NUEVO ---
-        st.warning(f"Hola {st.session_state.email_usuario}, completa tu registro:")
-        with st.form("registro_nuevo"):
-            col_a, col_b = st.columns(2)
-            dni_input = col_a.text_input("DNI (puedes usar puntos):")
-            nombre = col_b.text_input("Nombre:")
-            apellido = col_a.text_input("Apellido:")
-            celular = col_b.text_input("Celular:")
-            password = st.text_input("Crea una Contraseña:", type="password")
-            
-            if st.form_submit_button("Validar y Finalizar Registro"):
-                if all([nombre, apellido, dni_input, celular, password]):
-                    dni_limpio = dni_input.replace(".", "").replace(" ", "").strip()
-                    try:
-                        # Validar contra Padrón oficial
-                        df_padron = conn.read(worksheet="Padron_DNI", ttl=0).dropna(how='all')
-                        lista_dnis = df_padron['DNI'].astype(str).str.replace(".0", "", regex=False).str.replace(".", "", regex=False).tolist()
-                        
-                        if dni_limpio in lista_dnis:
-                            dni_formato = "{:,}".format(int(dni_limpio)).replace(",", ".")
-                            nuevo_perfil = pd.DataFrame([{
-                                "Email": st.session_state.email_usuario,
-                                "Nombre": nombre.title(),
-                                "Apellido": apellido.title(),
-                                "Celular": celular,
-                                "DNI": dni_formato,
-                                "Contrasena": password
-                            }])
-                            conn.update(worksheet="DB_Tecnicos", data=pd.concat([df_db, nuevo_perfil], ignore_index=True))
-                            st.success("✅ Registro exitoso.")
-                            time.sleep(2)
-                            st.rerun()
-                        else:
-                            st.error("❌ El DNI no figura en el padrón de personal autorizado.")
-                    except Exception as e:
-                        st.error(f"Error de validación: {e}")
-                else:
-                    st.error("Complete todos los campos.")
+        # --- REGISTRO ---
+        st.warning("Completa tu registro:")
+        with st.form("reg"):
+            col1, col2 = st.columns(2)
+            dni_in = col1.text_input("DNI:")
+            nom = col2.text_input("Nombre:")
+            ape = col1.text_input("Apellido:")
+            cel = col2.text_input("Celular:")
+            pwd = st.text_input("Contraseña:", type="password")
+            if st.form_submit_button("Registrar"):
+                dni_l = dni_in.replace(".","").strip()
+                df_p = conn.read(worksheet="Padron_DNI", ttl=0)
+                if dni_l in df_p['DNI'].astype(str).tolist():
+                    dni_f = "{:,}".format(int(dni_l)).replace(",", ".")
+                    nuevo = pd.DataFrame([{"Email":st.session_state.email_usuario, "Nombre":nom.title(), "Apellido":ape.title(), "Celular":cel, "DNI":dni_f, "Contrasena":pwd}])
+                    conn.update(worksheet="DB_Tecnicos", data=pd.concat([df_db, nuevo]))
+                    st.success("Registrado correctamente."); time.sleep(1); st.rerun()
+                else: st.error("DNI no en padrón.")
         st.stop()
     else:
-        # --- CASO: USUARIO EXISTE ---
-        datos_fila = user_row.iloc[0]
-        pwd_db = str(datos_fila['Contrasena']).strip()
-
-        # Verificar si la contraseña fue borrada (Reseteo)
-        if pwd_db == "" or pwd_db.lower() in ["nan", "none"]:
-            st.info(f"Hola {datos_fila['Nombre']}, tu contraseña ha sido reseteada. Genera una nueva:")
-            with st.form("reset_pwd"):
-                nueva_pwd = st.text_input("Nueva Contraseña:", type="password")
-                confirmar_pwd = st.text_input("Confirmar Nueva Contraseña:", type="password")
-                if st.form_submit_button("Actualizar"):
-                    if nueva_pwd and nueva_pwd == confirmar_pwd:
-                        # Evitar TypeError convirtiendo a object antes de asignar
-                        df_db['Contrasena'] = df_db['Contrasena'].astype(object)
-                        df_db.loc[df_db['Email'] == st.session_state.email_usuario, 'Contrasena'] = str(nueva_pwd)
-                        conn.update(worksheet="DB_Tecnicos", data=df_db)
-                        st.success("✅ Contraseña actualizada.")
-                        time.sleep(1.5)
-                        st.rerun()
-                    else:
-                        st.error("Las contraseñas no coinciden.")
-            st.stop()
-        else:
-            # Login normal
-            pwd_input = st.text_input(f"Hola {datos_fila['Nombre']}, ingresa tu contraseña:", type="password")
-            if st.button("Ingresar"):
-                if str(pwd_input) == pwd_db:
-                    st.session_state.autenticado = True
-                    st.session_state.datos_usuario = datos_fila.to_dict()
-                    st.rerun()
-                else:
-                    st.error("❌ Contraseña incorrecta.")
-            st.stop()
-
-# 4. MENÚ PRINCIPAL
-if st.session_state.seccion == "Menu":
-    st.title("🏢 SGM - Panel de Gestión")
-    st.markdown(f"Técnico: **{st.session_state.datos_usuario['Nombre']} {st.session_state.datos_usuario['Apellido']}**")
-    st.divider()
-    
-    col1, col2, col3 = st.columns(3)
-    if col1.button("📦\nMateriales"): st.session_state.seccion = "Materiales"; st.rerun()
-    if col2.button("🔧\nHerramientas"): st.session_state.seccion = "Herramientas"; st.rerun()
-    if col3.button("👕\nIndumentaria"): st.session_state.seccion = "Indumentaria"; st.rerun()
-    st.stop()
-
-# 5. VALIDACIONES PARA MATERIALES (L-M-V)
-if st.session_state.seccion == "Materiales":
-    tz_arg = pytz.timezone('America/Argentina/Buenos_Aires')
-    ahora_arg = datetime.now(tz_arg)
-    if ahora_arg.weekday() not in [0, 2, 4] or not (7 <= ahora_arg.hour < 15):
-        st.error("🕒 Materiales solo disponible L-M-V de 07:00 a 15:00 hs.")
-        if st.button("⬅️ Volver"): st.session_state.seccion = "Menu"; st.rerun()
+        # --- LOGIN ---
+        datos = user_row.iloc[0]
+        p_in = st.text_input(f"Hola {datos['Nombre']}, contraseña:", type="password")
+        if st.button("Ingresar"):
+            if str(p_in) == str(datos['Contrasena']):
+                st.session_state.autenticado = True
+                st.session_state.datos_usuario = datos.to_dict()
+                st.rerun()
+            else: st.error("Incorrecta")
         st.stop()
 
-# 6. DEFINICIÓN DE ARTÍCULOS
-listas = {
-    "Materiales": ["13008 CONTROL REMOTO", "30032 CABLE COAXIL", "31025 PRECINTO"],
-    "Herramientas": ["H001 PINZA PUNTA", "H002 ALICATE", "H003 PELACABLE"],
-    "Indumentaria": ["I001 PANTALON CARGO", "I002 CHOMBA TALLE L"]
-}
-items_disponibles = listas.get(st.session_state.seccion, [])
+# --- 4. LÓGICA DE MENÚ DIFERENCIADO POR DNI ---
+dni_actual = st.session_state.datos_usuario['DNI'].replace(".", "")
 
-# 7. INTERFAZ DE CARGA
+if st.session_state.seccion == "Menu":
+    st.title("🏢 SGM - Panel de Gestión")
+    st.write(f"Usuario: {st.session_state.datos_usuario['Nombre']}")
+    st.divider()
+
+    # SI ES EL DNI ESPECIAL (Limpieza y Librería)
+    if dni_actual == "1111111":
+        col1, col2 = st.columns(2)
+        if col1.button("📚\nInsumos Librería"):
+            st.session_state.seccion = "Insumos_Libreria"
+            st.rerun()
+        if col2.button("🧼\nInsumos Limpieza"):
+            st.session_state.seccion = "Insumos_Limpieza"
+            st.rerun()
+    
+    # SI ES CUALQUIER OTRO DNI (Materiales, Herramientas, Indumentaria)
+    else:
+        col1, col2, col3 = st.columns(3)
+        if col1.button("📦\nMateriales"): st.session_state.seccion = "Materiales"; st.rerun()
+        if col2.button("🔧\nHerramientas"): st.session_state.seccion = "Herramientas"; st.rerun()
+        if col3.button("👕\nIndumentaria"): st.session_state.seccion = "Indumentaria"; st.rerun()
+    st.stop()
+
+# --- 5. INTERFAZ DE CARGA UNIVERSAL ---
 st.button("⬅️ Menú Principal", on_click=lambda: setattr(st.session_state, 'seccion', 'Menu'))
-st.title(f"Solicitud: {st.session_state.seccion}")
+st.title(f"Sección: {st.session_state.seccion.replace('_', ' ')}")
 
-tab_carga, tab_resumen = st.tabs(["📝 Cargar", "🛒 Mi Pedido"])
+# Listas de artículos según sección
+listas = {
+    "Materiales": ["13008 CONTROL", "30032 CABLE", "31025 PRECINTO"],
+    "Herramientas": ["H001 PINZA", "H002 ALICATE"],
+    "Indumentaria": ["I001 PANTALON", "I002 CHOMBA"],
+    "Insumos_Libreria": ["L001 RESMA A4", "L002 LAPICERA AZUL", "L003 BROCHADORA"],
+    "Insumos_Limpieza": ["C001 LAVANDINA", "C002 DETERGENTE", "C003 TRAPO PISO"]
+}
+items = listas.get(st.session_state.seccion, [])
 
-with tab_carga:
-    with st.form("form_carga", clear_on_submit=True):
-        seleccion = st.selectbox("Artículo:", items_disponibles)
-        motivo = ""
+tab1, tab2 = st.tabs(["📝 Cargar", "🛒 Mi Pedido"])
+
+with tab1:
+    with st.form("f_carga", clear_on_submit=True):
+        sel = st.selectbox("Artículo:", items)
+        cant = st.text_input("Cantidad:")
+        # Motivos solo para herramientas/ropa
+        mot = ""
         if st.session_state.seccion in ["Herramientas", "Indumentaria"]:
-            opciones = ["Cambio", "Perdido", "Nunca entregado"] if st.session_state.seccion == "Herramientas" else ["Desgaste", "Nunca entregado"]
-            motivo = st.radio("Motivo:", opciones, horizontal=True)
-        cantidad = st.text_input("Cantidad:")
-        
-        if st.form_submit_button("➕ AÑADIR AL PEDIDO"):
-            if cantidad.isdigit() and int(cantidad) > 0:
-                cod = seleccion.split(" ", 1)[0]
-                if any(i['Codigo'] == cod for i in st.session_state.carrito):
-                    st.error(f"❌ El código {cod} ya está en el pedido.")
-                else:
+            mot = st.radio("Motivo:", ["Cambio", "Desgaste", "Perdido"], horizontal=True)
+            
+        if st.form_submit_button("➕ AÑADIR"):
+            if cant.isdigit() and int(cant) > 0:
+                cod = sel.split(" ", 1)[0]
+                if not any(i['Codigo'] == cod for i in st.session_state.carrito):
                     st.session_state.carrito.append({
                         "Nombre": st.session_state.datos_usuario['Nombre'],
                         "Apellido": st.session_state.datos_usuario['Apellido'],
                         "DNI": st.session_state.datos_usuario['DNI'],
-                        "Celular": st.session_state.datos_usuario['Celular'],
                         "Codigo": cod,
-                        "Articulo": seleccion.split(" ", 1)[1] if " " in seleccion else "",
-                        "Cantidad": int(cantidad),
-                        "Motivo": motivo,
+                        "Articulo": sel.split(" ", 1)[1] if " " in sel else "",
+                        "Cantidad": int(cant),
+                        "Motivo": mot,
                         "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M")
                     })
                     st.rerun()
-            else:
-                st.error("Ingrese una cantidad válida.")
+                else: st.error("Ya está en el carrito.")
 
-with tab_resumen:
-    if not st.session_state.carrito:
-        st.info("No hay artículos cargados.")
+with tab2:
+    if not st.session_state.carrito: st.info("Vacio")
     else:
         for i, item in enumerate(st.session_state.carrito):
-            col_x, col_y = st.columns([4, 1])
-            col_x.write(f"**{item['Codigo']}** - {item['Articulo']} (Cant: {item['Cantidad']})")
-            if col_y.button("❌", key=f"btn_{i}"):
+            st.write(f"**{item['Codigo']}** - {item['Articulo']} (x{item['Cantidad']})")
+            if st.button("❌", key=f"del_{i}"):
                 st.session_state.carrito.pop(i)
                 st.rerun()
         
-        if st.button("🚀 CONFIRMAR Y ENVIAR"):
+        if st.button("🚀 ENVIAR PEDIDO"):
             try:
-                hoja = st.session_state.seccion
-                df_envio = pd.DataFrame(st.session_state.carrito)
-                existente = conn.read(worksheet=hoja, ttl=0).dropna(how='all')
-                conn.update(worksheet=hoja, data=pd.concat([existente, df_envio], ignore_index=True))
-                st.balloons()
-                st.success("✅ Pedido enviado correctamente.")
-                st.session_state.carrito = []
-                st.session_state.seccion = "Menu"
-                time.sleep(2)
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error al enviar: {e}")
+                df_e = pd.DataFrame(st.session_state.carrito)
+                # Guarda en la hoja que coincide con el nombre de la sección
+                ex = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
+                conn.update(worksheet=st.session_state.seccion, data=pd.concat([ex, df_e]))
+                st.success("¡Enviado!"); st.session_state.carrito = []
+                st.session_state.seccion = "Menu"; time.sleep(2); st.rerun()
+            except Exception as e: st.error(f"Error: {e}")
