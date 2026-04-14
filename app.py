@@ -50,7 +50,7 @@ def check_login():
 
 if not st.session_state.autenticado:
     st.title("🔐 Acceso al Sistema")
-    st.info("Ingresa tu correo corporativo para continuar.")
+    st.info("Ingresa tu correo para continuar.")
     st.text_input("Correo Electrónico:", key="email_login", on_change=check_login)
     st.stop()
 
