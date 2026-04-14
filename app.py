@@ -48,12 +48,11 @@ try:
     if st.session_state.email_usuario in df_auth[df_auth['Estado'] == 'Bloqueado']['Email'].values:
         st.title("🚫 Acceso Restringido")
         st.warning(f"Hola {st.session_state.email_usuario}, ya registraste un pedido hoy.")
-        st.info("Tu acceso está bloqueado hasta nueva autorización.")
         st.stop()
 except Exception:
     pass
 
-# --- FORMULARIO DE PEDIDO ---
+# --- LISTA DE MATERIALES ---
 st.title("📦 Formulario de Pedidos")
 st.success(f"👷 Técnico: **{st.session_state.email_usuario}**")
 
@@ -87,6 +86,7 @@ materiales_disponibles = [
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
 
+# --- FORMULARIO DE AGREGAR ---
 with st.form("formulario_pedido", clear_on_submit=True):
     col1, col2 = st.columns([2, 1])
     with col1:
@@ -111,15 +111,27 @@ with st.form("formulario_pedido", clear_on_submit=True):
         except ValueError:
             st.error("Usa números")
 
-# --- RESUMEN Y ENVÍO ---
+# --- RESUMEN Y ELIMINACIÓN ---
 if st.session_state.carrito:
-    st.subheader("🛒 Resumen")
+    st.subheader("🛒 Resumen del pedido")
     df_pedido = pd.DataFrame(st.session_state.carrito)
     st.table(df_pedido)
     
+    # NUEVA FUNCIONALIDAD: BORRAR ÍTEM ESPECÍFICO
+    with st.expander("🗑️ Quitar algún artículo"):
+        # Creamos una lista de etiquetas para el selector para que el técnico sepa cuál borrar
+        opciones_borrar = [f"{i}: {item['Articulo']} ({item['Cantidad']})" for i, item in enumerate(st.session_state.carrito)]
+        item_a_borrar = st.selectbox("Selecciona el artículo a eliminar:", opciones_borrar)
+        if st.button("❌ Eliminar seleccionado"):
+            # Extraemos el índice del texto (el número antes de los dos puntos)
+            indice = int(item_a_borrar.split(":")[0])
+            st.session_state.carrito.pop(indice)
+            st.rerun()
+
+    # --- BOTONES DE ENVÍO ---
     col_a, col_b = st.columns(2)
     with col_a:
-        if st.button("🗑️ Vaciar"):
+        if st.button("🗑️ Vaciar todo"):
             st.session_state.carrito = []
             st.rerun()
     with col_b:
