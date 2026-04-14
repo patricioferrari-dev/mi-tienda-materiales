@@ -7,7 +7,7 @@ import time
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="SGM - Gestión Integral", page_icon="🏢", layout="centered")
 
-# 2. CSS AVANZADO: Cuadrícula, líneas punteadas y botones
+# 2. CSS AVANZADO: Celdas con bordes totales (Tipo Tabla)
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
@@ -15,49 +15,50 @@ st.markdown("""
     /* Botones grandes del menú */
     .stButton>button { width: 100%; border-radius: 10px; font-weight: bold; height: 3.5em; }
     
-    /* Estructura de Cuadrícula en el Pedido */
+    /* Contenedor de la fila */
     [data-testid="stHorizontalBlock"] {
-        border-bottom: 1px dashed #bbb;
-        padding: 5px 0px !important;
-        align-items: center;
         gap: 0px !important;
+        margin-bottom: -1px !important; /* Superpone bordes para que no se vean dobles */
     }
 
-    /* Líneas verticales punteadas */
+    /* Estilo de Celda (Columnas) */
     div[data-testid="stColumn"] {
-        border-right: 1px dashed #bbb;
-        padding: 0px 10px !important;
+        border: 1px solid #000 !important; /* Borde total negro o gris oscuro */
+        padding: 10px !important;
         display: flex;
         align-items: center;
+        justify-content: center;
+        background-color: white;
     }
 
-    /* Quitar línea vertical en la última columna */
-    div[data-testid="stColumn"]:last-child {
-        border-right: none;
+    /* Ajuste específico para la columna de descripción (alineada a la izquierda) */
+    div[data-testid="stColumn"]:nth-of-type(2) {
+        justify-content: flex-start !important;
     }
 
-    /* Botón ELIMINAR Rojo (ajustado para texto) */
+    /* Botón ELIMINAR (Sin cuadrado rojo, solo texto) */
     div[data-testid="stColumn"] button {
-        background-color: #ff4b4b !important;
-        color: white !important;
-        border: none !important;
-        height: 28px !important;
-        width: 100% !important;
-        padding: 0px 5px !important;
-        margin: 0px auto !important;
-        border-radius: 4px !important;
+        background-color: transparent !important;
+        color: #ff4b4b !important; /* Texto en rojo para advertencia */
+        border: 1px solid #ff4b4b !important;
+        height: 25px !important;
+        width: auto !important;
+        padding: 0px 10px !important;
         font-size: 11px !important;
         text-transform: uppercase;
+        font-weight: bold !important;
     }
     
     div[data-testid="stColumn"] button:hover {
-        background-color: #d33 !important;
+        background-color: #ff4b4b !important;
+        color: white !important;
     }
 
     .compact-text {
         font-size: 14px !important;
         margin: 0px !important;
         padding: 0px !important;
+        color: #000;
     }
 
     #MainMenu, footer, header {visibility: hidden;}
@@ -129,14 +130,13 @@ if not st.session_state.autenticado:
             else: st.error("Incorrecta")
         st.stop()
 
-# 6. LÓGICA DE MENÚ (DNI SEGURO)
+# 6. LÓGICA DE MENÚ
 raw_dni = str(st.session_state.datos_usuario.get('DNI', ''))
 dni_actual = raw_dni.split(".")[0].replace(" ", "").replace(".", "")
 
 if st.session_state.seccion == "Menu":
     st.session_state.carrito = [] 
     st.title("🏢 SGM - Gestión")
-    st.write(f"Usuario: {st.session_state.datos_usuario['Nombre']}")
     st.divider()
 
     if dni_actual == "1111111":
@@ -192,10 +192,10 @@ with tab2:
     if not st.session_state.carrito:
         st.info("Vacío")
     else:
-        # Encabezados (ajustamos el ancho de columnas para el texto "Eliminar")
+        # Encabezados de Tabla
         h1, h2, h3 = st.columns([1, 3.5, 1.5])
-        h1.markdown("<p class='compact-text'><b>Cant</b></p>", unsafe_allow_html=True)
-        h2.markdown("<p class='compact-text'><b>Artículo</b></p>", unsafe_allow_html=True)
+        h1.markdown("<p class='compact-text'><b>Cant.</b></p>", unsafe_allow_html=True)
+        h2.markdown("<p class='compact-text'><b>Descripción del Artículo</b></p>", unsafe_allow_html=True)
         h3.markdown("<p class='compact-text'><b>Acción</b></p>", unsafe_allow_html=True)
         
         for i, item in enumerate(st.session_state.carrito):
@@ -204,13 +204,12 @@ with tab2:
             desc = f"[{item['Codigo']}] {item['Articulo']}" if item['Codigo'] != "S/C" else item['Articulo']
             row_c2.markdown(f"<p class='compact-text'>{desc}</p>", unsafe_allow_html=True)
             
-            # Reemplazamos la X por el texto "Eliminar"
             if row_c3.button("Eliminar", key=f"del_{i}"):
                 st.session_state.carrito.pop(i)
                 st.rerun()
 
         st.write("")
-        if st.button("🚀 ENVIAR PEDIDO"):
+        if st.button("🚀 ENVIAR PEDIDO FINAL"):
             try:
                 df_e = pd.DataFrame(st.session_state.carrito)
                 ex = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
