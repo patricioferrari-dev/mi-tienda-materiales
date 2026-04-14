@@ -5,6 +5,8 @@ from datetime import datetime
 import pytz
 import time
 import re
+import uuid   # Para generar IDs únicos
+import random # Para el retraso aleatorio
 
 # 1. CONFIGURACIÓN DE PÁGINA Y CSS
 st.set_page_config(page_title="SGM - Gestión de Pedidos", page_icon="🏢", layout="wide")
@@ -39,7 +41,7 @@ def registrar_log(usuario, dni, evento, seccion="-", detalle="-"):
         df_logs = conn.read(worksheet="Logs", ttl=0).dropna(how='all')
         conn.update(worksheet="Logs", data=pd.concat([df_logs, nuevo_log], ignore_index=True))
     except:
-        pass # Evita que la app se caiga si fallan los logs
+        pass 
 
 def es_email_valido(email):
     patron = r'^[\w\.-]+@[\w\.-]+\.\w+$'
@@ -48,7 +50,7 @@ def es_email_valido(email):
 def es_horario_permitido():
     tz_ba = pytz.timezone('America/Argentina/Buenos_Aires')
     ahora = datetime.now(tz_ba)
-    dia_semana = ahora.weekday() # 0=Lunes, 2=Miércoles, 4=Viernes
+    dia_semana = ahora.weekday() 
     hora_actual = ahora.hour
     return dia_semana in [0, 2, 4] and 7 <= hora_actual < 15
 
@@ -216,7 +218,9 @@ with tab1:
             if any(i['Articulo'] == sel for i in st.session_state.carrito):
                 st.warning(f"El artículo {sel} ya está en el resumen.")
             else:
+                # PASO 2: Se genera un ID único para cada artículo en el carrito
                 st.session_state.carrito.append({
+                    "ID_Interno": str(uuid.uuid4())[:8],
                     "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M"),
                     "Email": st.session_state.datos_usuario.get('Email'),
                     "Nombre": st.session_state.datos_usuario.get('Nombre'),
@@ -239,28 +243,35 @@ with tab2:
             r1, r2, r3 = st.columns([1, 6, 0.8])
             r1.markdown(f'<div class="cell-data" style="text-align:center">{item["Cantidad"]}</div>', unsafe_allow_html=True)
             m_txt = f" ({item.get('Motivo', '')})" if item.get('Motivo') else ""
-            r2.markdown(f'<div class="cell-data">{item["Articulo"]}{m_txt}</div>', unsafe_allow_html=True)
+            r2.markdown(f'<div class="cell-data">{item["Articulo"]}{m_txt} <br><small style="color:gray">ID: {item["ID_Interno"]}</small></div>', unsafe_allow_html=True)
             if r3.button("X", key=f"del_{idx}"):
                 st.session_state.carrito.pop(idx); st.rerun()
         
         if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
-            # Guardar pedido
-            df_new = pd.DataFrame(st.session_state.carrito)
-            df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
-            conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new], ignore_index=True))
-            
-            # Auditoría del pedido
-            registrar_log(nombre_completo, dni_actual, "ENVIO_PEDIDO", st.session_state.seccion, f"Items: {len(st.session_state.carrito)}")
+            with st.spinner("Sincronizando con la base de datos de forma segura..."):
+                
+                # --- PASO 2: ANTI-COLISIÓN (RETRASO ALEATORIO) ---
+                # Esto escalona las entradas si dos personas envían al mismo tiempo
+                time.sleep(random.uniform(0.1, 1.5)) 
+                
+                # Guardar pedido
+                df_new = pd.DataFrame(st.session_state.carrito)
+                # Volvemos a leer para asegurar que tenemos la versión más fresca antes de concatenar
+                df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
+                conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new], ignore_index=True))
+                
+                # Auditoría del pedido
+                registrar_log(nombre_completo, dni_actual, "ENVIO_PEDIDO", st.session_state.seccion, f"Items: {len(st.session_state.carrito)}")
 
-            if st.session_state.seccion == "Materiales":
-                df_up = conn.read(worksheet="Autorizaciones", ttl=0)
-                df_up['DNI_STR'] = df_up['DNI'].astype(str).str.split('.').str[0].str.strip()
-                idx_auth = df_up.index[df_up['DNI_STR'] == dni_actual].tolist()
-                if idx_auth:
-                    df_up.at[idx_auth[0], 'Estado'] = "bloqueado"
-                    conn.update(worksheet="Autorizaciones", data=df_up.drop(columns=['DNI_STR']))
-                    registrar_log(nombre_completo, dni_actual, "BLOQUEO_AUTO", "Autorizaciones", "Acceso a materiales revocado post-pedido")
+                if st.session_state.seccion == "Materiales":
+                    df_up = conn.read(worksheet="Autorizaciones", ttl=0)
+                    df_up['DNI_STR'] = df_up['DNI'].astype(str).str.split('.').str[0].str.strip()
+                    idx_auth = df_up.index[df_up['DNI_STR'] == dni_actual].tolist()
+                    if idx_auth:
+                        df_up.at[idx_auth[0], 'Estado'] = "bloqueado"
+                        conn.update(worksheet="Autorizaciones", data=df_up.drop(columns=['DNI_STR']))
+                        registrar_log(nombre_completo, dni_actual, "BLOQUEO_AUTO", "Autorizaciones", "Acceso a materiales revocado post-pedido")
 
-            st.success("✅ Pedido enviado.")
+            st.success("✅ Pedido enviado correctamente.")
             st.session_state.carrito = []
             time.sleep(2); cambiar_seccion("Menu"); st.rerun()
