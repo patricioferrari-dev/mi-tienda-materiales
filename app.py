@@ -48,8 +48,6 @@ materiales_disponibles = [
 # Inicializar estados de la sesión
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
-if 'pedido_enviado' not in st.session_state:
-    st.session_state.pedido_enviado = False
 
 # --- BLOQUEO DE NOMBRE ---
 # Si ya hay algo en el carrito, bloqueamos el selector de nombre
@@ -86,7 +84,7 @@ with st.form("formulario_pedido", clear_on_submit=True):
                 "Articulo": nom,
                 "Cantidad": cantidad
             })
-            st.rerun() # Recargamos para que se bloquee el selector de técnico inmediatamente
+            st.rerun()
 
 # --- RESUMEN Y ENVÍO ---
 if st.session_state.carrito:
@@ -108,7 +106,7 @@ if st.session_state.carrito:
                 try:
                     existente = conn.read(worksheet="Pedidos", ttl=0)
                     existente = existente.dropna(how='all')
-                except:
+                except Exception:
                     existente = pd.DataFrame(columns=["Tecnico", "Codigo", "Articulo", "Cantidad"])
                 
                 actualizado = pd.concat([existente, df_pedido], ignore_index=True)
@@ -117,9 +115,11 @@ if st.session_state.carrito:
                 st.success("✅ ¡Pedido enviado! Gracias.")
                 st.balloons()
                 
-                # Limpiamos todo para que no pueda seguir agregando al mismo pedido
+                # Limpieza final
                 st.session_state.carrito = []
-                st.info("Reiniciando formulario para un nuevo pedido...")
                 st.rerun()
                 
             except Exception as e:
+                st.error(f"Error al enviar: {e}")
+else:
+    st.info("Selecciona materiales para comenzar tu pedido.")
