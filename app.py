@@ -64,7 +64,9 @@ if not st.session_state.autenticado:
             if st.form_submit_button("Registrar"):
                 dni_l = dni_in.replace(".","").strip()
                 df_p = conn.read(worksheet="Padron_DNI", ttl=0)
-                if dni_l in df_p['DNI'].astype(str).str.replace(".0", "", regex=False).tolist():
+                lista_dnis = df_p['DNI'].astype(str).str.replace(".0", "", regex=False).str.replace(".", "", regex=False).tolist()
+                
+                if dni_l in lista_dnis:
                     dni_f = "{:,}".format(int(dni_l)).replace(",", ".")
                     nuevo = pd.DataFrame([{"Email":st.session_state.email_usuario, "Nombre":nom.title(), "Apellido":ape.title(), "Celular":cel, "DNI":dni_f, "Contrasena":pwd}])
                     conn.update(worksheet="DB_Tecnicos", data=pd.concat([df_db, nuevo]))
@@ -82,19 +84,17 @@ if not st.session_state.autenticado:
             else: st.error("Contraseña incorrecta")
         st.stop()
 
-# --- 4. LÓGICA DE MENÚ (CORRECCIÓN DEL ERROR LINEA 90) ---
-# Convertimos el DNI a string, quitamos el .0 si existe, y luego quitamos los puntos
+# --- 4. LÓGICA DE MENÚ ---
 raw_dni = str(st.session_state.datos_usuario.get('DNI', ''))
-dni_actual = raw_dni.split(".")[0].replace(" ", "") 
+dni_actual = raw_dni.split(".")[0].replace(" ", "").replace(".", "") 
 
 if st.session_state.seccion == "Menu":
+    st.session_state.carrito = []
     st.title("🏢 SGM - Panel de Gestión")
     st.markdown(f"Usuario: **{st.session_state.datos_usuario['Nombre']} {st.session_state.datos_usuario['Apellido']}**")
     st.divider()
 
-    # Perfil Administrador / Insumos Generales
     if dni_actual == "1111111":
-        st.info("💡 Acceso a Suministros Generales")
         col1, col2 = st.columns(2)
         if col1.button("📚\nInsumos Librería"):
             st.session_state.seccion = "Insumos_Libreria"
@@ -102,8 +102,6 @@ if st.session_state.seccion == "Menu":
         if col2.button("🧼\nInsumos Limpieza"):
             st.session_state.seccion = "Insumos_Limpieza"
             st.rerun()
-    
-    # Perfil Técnicos
     else:
         col1, col2, col3 = st.columns(3)
         if col1.button("📦\nMateriales"): st.session_state.seccion = "Materiales"; st.rerun()
@@ -111,7 +109,7 @@ if st.session_state.seccion == "Menu":
         if col3.button("👕\nIndumentaria"): st.session_state.seccion = "Indumentaria"; st.rerun()
     st.stop()
 
-# --- 5. INTERFAZ DE CARGA ---
+# --- 5. INTERFAZ DE CARGA SIN CÓDIGOS PARA LIBRERÍA/LIMPIEZA ---
 st.button("⬅️ Menú Principal", on_click=lambda: setattr(st.session_state, 'seccion', 'Menu'))
 st.title(f"Sección: {st.session_state.seccion.replace('_', ' ')}")
 
@@ -119,8 +117,9 @@ listas = {
     "Materiales": ["13008 CONTROL", "30032 CABLE", "31025 PRECINTO"],
     "Herramientas": ["H001 PINZA", "H002 ALICATE"],
     "Indumentaria": ["I001 PANTALON", "I002 CHOMBA"],
-    "Insumos_Libreria": ["L001 RESMA A4", "L002 LAPICERA"],
-    "Insumos_Limpieza": ["C001 LAVANDINA", "C002 DETERGENTE"]
+    # Aquí ya no usamos códigos al principio del nombre
+    "Insumos_Libreria": ["Resma A4", "Lapicera Azul", "Cuaderno Universitario", "Cinta de Embalar"],
+    "Insumos_Limpieza": ["Lavandina 5L", "Detergente", "Trapo de Piso", "Bolsas de Consorcio"]
 }
 items = listas.get(st.session_state.seccion, [])
 
@@ -136,13 +135,22 @@ with tab1:
             
         if st.form_submit_button("➕ AÑADIR"):
             if cant.isdigit() and int(cant) > 0:
-                cod = sel.split(" ", 1)[0]
+                # LÓGICA DIFERENCIADA:
+                if st.session_state.seccion in ["Insumos_Libreria", "Insumos_Limpieza"]:
+                    # No hay código, usamos el nombre completo
+                    codigo_final = "S/C" # Sin Código
+                    articulo_final = sel
+                else:
+                    # Formato tradicional: separar por el primer espacio
+                    codigo_final = sel.split(" ", 1)[0]
+                    articulo_final = sel.split(" ", 1)[1] if " " in sel else ""
+
                 st.session_state.carrito.append({
                     "Nombre": st.session_state.datos_usuario['Nombre'],
                     "Apellido": st.session_state.datos_usuario['Apellido'],
                     "DNI": st.session_state.datos_usuario['DNI'],
-                    "Codigo": cod,
-                    "Articulo": sel.split(" ", 1)[1] if " " in sel else "",
+                    "Codigo": codigo_final,
+                    "Articulo": articulo_final,
                     "Cantidad": int(cant),
                     "Motivo": mot,
                     "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M")
@@ -153,7 +161,9 @@ with tab2:
     if not st.session_state.carrito: st.info("Carrito vacío.")
     else:
         for i, item in enumerate(st.session_state.carrito):
-            st.write(f"**{item['Codigo']}** - {item['Articulo']} (x{item['Cantidad']})")
+            # Si no tiene código, mostramos solo el artículo
+            texto_mostrar = f"**{item['Articulo']}** (x{item['Cantidad']})" if item['Codigo'] == "S/C" else f"**{item['Codigo']}** - {item['Articulo']} (x{item['Cantidad']})"
+            st.write(texto_mostrar)
             if st.button("❌", key=f"del_{i}"):
                 st.session_state.carrito.pop(i)
                 st.rerun()
