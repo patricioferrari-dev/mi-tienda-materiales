@@ -4,6 +4,7 @@ from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
 import pytz
 import time
+import re  # Librería para validar el email
 
 # 1. CONFIGURACIÓN DE PÁGINA Y CSS
 st.set_page_config(page_title="SGM - Gestión de Pedidos", page_icon="🏢", layout="wide")
@@ -21,7 +22,11 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. LÓGICA DE CONTROL HORARIO
+# 2. FUNCIONES DE VALIDACIÓN
+def es_email_valido(email):
+    patron = r'^[\w\.-]+@[\w\.-]+\.\w+$'
+    return re.match(patron, email) is not None
+
 def es_horario_permitido():
     tz_ba = pytz.timezone('America/Argentina/Buenos_Aires')
     ahora = datetime.now(tz_ba)
@@ -46,16 +51,26 @@ if not st.session_state.autenticado:
         st.title("🔑 Asignar Acceso")
         user = st.session_state.user_a_reestablecer
         st.info(f"Usuario: {user.get('Nombre', 'S/N')} {user.get('Apellido', 'S/A')} (DNI: {str(user['DNI']).split('.')[0]})")
+        
         with st.form("form_reset"):
-            n_mail = st.text_input("Asignar/Confirmar Email:").strip().lower()
-            n_cel = st.text_input("Celular de contacto:").strip()
+            n_mail = st.text_input("Asignar Email:").strip().lower()
+            n_cel = st.text_input("Celular (10 dígitos sin 0 ni 15):", help="Ejemplo: 1122334455").strip()
             nueva_p = st.text_input("Nueva Contraseña:", type="password")
             confirm_p = st.text_input("Confirmar Contraseña:", type="password")
+            
             if st.form_submit_button("GUARDAR Y ACTIVAR CUENTA"):
-                if nueva_p == confirm_p and len(nueva_p) > 0 and n_mail:
+                # VALIDACIONES NUEVAS
+                cel_limpio = n_cel.replace(" ", "").replace("-", "")
+                
+                if not es_email_valido(n_mail):
+                    st.error("⚠️ El formato del email no es válido (ejemplo@correo.com).")
+                elif len(cel_limpio) != 10 or not cel_limpio.isdigit():
+                    st.error("⚠️ El celular debe tener exactamente 10 dígitos numéricos.")
+                elif nueva_p != confirm_p or len(nueva_p) == 0:
+                    st.error("⚠️ Las contraseñas no coinciden o están vacías.")
+                else:
+                    # Si todo está OK, procedemos a guardar
                     df_db = conn.read(worksheet="DB_Tecnicos", ttl=0)
-                    
-                    # --- SOLUCIÓN AL TYPEERROR: FORZAR COLUMNAS A TEXTO ---
                     for col in ['Email', 'Contrasena', 'Celular']:
                         df_db[col] = df_db[col].astype(object)
                     
@@ -66,14 +81,14 @@ if not st.session_state.autenticado:
                         idx = idx_list[0]
                         df_db.at[idx, 'Contrasena'] = str(nueva_p)
                         df_db.at[idx, 'Email'] = str(n_mail)
-                        df_db.at[idx, 'Celular'] = str(n_cel)
+                        df_db.at[idx, 'Celular'] = str(cel_limpio)
                         conn.update(worksheet="DB_Tecnicos", data=df_db.drop(columns=['DNI_STR']))
-                        st.success("Cuenta activada. Ya puedes ingresar.")
+                        st.success("✅ Cuenta activada. Ya puedes ingresar.")
                         st.session_state.reestablecer = False
                         time.sleep(2); st.rerun()
                     else:
                         st.error("Error al localizar el DNI en la base.")
-                else: st.error("Error en los datos o las contraseñas no coinciden.")
+
         if st.button("Volver"): st.session_state.reestablecer = False; st.rerun()
 
     elif st.session_state.modo_registro:
@@ -90,7 +105,7 @@ if not st.session_state.autenticado:
                     st.session_state.modo_registro = False
                     st.rerun()
                 else: st.error("🚫 DNI no encontrado.")
-        if st.button("⬅️ Volver al Login"): st.session_state.modo_registro = False; st.rerun()
+        if st.button("⬅️ Volver"): st.session_state.modo_registro = False; st.rerun()
 
     else:
         st.title("🔐 Acceso SGM")
