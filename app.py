@@ -8,23 +8,25 @@ import time
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="SGM - Gestión Integral", page_icon="🏢", layout="centered")
 
-# CSS Profesional mejorado para los botones de eliminación
+# CSS Profesional - Corregido para evitar errores de parámetros
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
     .stButton>button { width: 100%; border-radius: 10px; font-weight: bold; height: 3.5em; }
-    /* Estilo para el botón X de eliminar */
-    .stButton>button[kind="secondary"] {
-        color: white;
-        background-color: #ff4b4b;
-        border: none;
-        height: 2.2em;
-        width: 2.2em;
-        border-radius: 5px;
+    
+    /* Selector específico para los botones de eliminar (X) */
+    div[data-testid="stColumn"] button {
+        background-color: #ff4b4b !important;
+        color: white !important;
+        border: none !important;
+        height: 2.2em !important;
+        width: 100% !important;
+        border-radius: 5px !important;
+        padding: 0px !important;
     }
-    .stButton>button[kind="secondary"]:hover {
-        background-color: #d33;
-        border: none;
+    div[data-testid="stColumn"] button:hover {
+        background-color: #d33 !important;
+        color: white !important;
     }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -174,35 +176,28 @@ with tab2:
     else:
         st.subheader("Resumen del Pedido")
         
-        # --- ENCABEZADOS DE "TABLA" MANUAL ---
+        # Encabezados
         h1, h2, h3 = st.columns([1, 4, 1])
         h1.write("**Cant.**")
         h2.write("**Descripción**")
         h3.write("**Elim.**")
         st.divider()
 
-        # --- FILAS DE PRODUCTOS ---
+        # Filas de productos
         for i, item in enumerate(st.session_state.carrito):
             c1, c2, c3 = st.columns([1, 4, 1])
-            
-            # Columna 1: Cantidad
             c1.write(f"{item['Cantidad']}")
             
-            # Columna 2: Artículo (con código si existe)
-            if item['Codigo'] == "S/C":
-                c2.write(f"{item['Articulo']}")
-            else:
-                c2.write(f"[{item['Codigo']}] {item['Articulo']}")
+            desc = f"[{item['Codigo']}] {item['Articulo']}" if item['Codigo'] != "S/C" else item['Articulo']
+            c2.write(desc)
             
-            # Columna 3: Botón X Rojo
-            # Usamos kind="secondary" para el estilo CSS personalizado de arriba
-            if c3.button("✖", key=f"del_{i}", kind="secondary"):
+            # ELIMINADO EL PARÁMETRO 'kind' QUE CAUSABA EL ERROR
+            if c3.button("✖", key=f"del_{i}"):
                 st.session_state.carrito.pop(i)
                 st.rerun()
             
-            st.markdown("---") # Línea divisoria entre celdas
+            st.markdown("---")
 
-        # --- ACCIONES FINALES ---
         if st.button("🚀 CONFIRMAR Y ENVIAR PEDIDO"):
             try:
                 df_e = pd.DataFrame(st.session_state.carrito)
