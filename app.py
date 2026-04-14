@@ -1,3 +1,19 @@
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .stDeployButton {display:none;}
+    </style>
+    """, unsafe_allow_html=True)
+
+
+
+
+
+
+
+
 import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
