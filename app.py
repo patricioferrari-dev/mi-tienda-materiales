@@ -5,10 +5,38 @@ from streamlit_gsheets import GSheetsConnection
 # Configuración de la página
 st.set_page_config(page_title="Sistema de Pedidos", page_icon="📦")
 
+# --- LÓGICA DE LOGIN ---
+if 'autenticado' not in st.session_state:
+    st.session_state.autenticado = False
+
+def check_login():
+    email_ingresado = st.session_state.email_login.lower().strip()
+    # Obtenemos la lista desde los Secrets
+    lista_blanca = st.secrets["usuarios_autorizados"]["emails"]
+    
+    if email_ingresado in [e.lower() for e in lista_blanca]:
+        st.session_state.autenticado = True
+    else:
+        st.error("🚫 Este correo no está autorizado. Contacta al administrador.")
+
+# Pantalla de Login
+if not st.session_state.autenticado:
+    st.title("🔐 Acceso Restringido")
+    st.text_input("Ingresa tu email para continuar:", key="email_login", on_change=check_login)
+    st.stop() # Detiene la ejecución aquí si no está autenticado
+
+# --- SI LLEGA AQUÍ, ESTÁ AUTENTICADO ---
+
 st.title("📦 Formulario de Pedidos Online")
-st.write("Selecciona tu nombre y carga los materiales.")
+st.write(f"Sesión iniciada como: **{st.session_state.email_login}**")
+
+# Botón para cerrar sesión
+if st.sidebar.button("Cerrar Sesión"):
+    st.session_state.autenticado = False
+    st.rerun()
 
 # --- CONFIGURACIÓN DE LISTAS ---
+# Mantenemos tu lista de nombres para el Excel (o puedes usar el email directamente)
 lista_tecnicos = [
     "Seleccionar...",
     "Juan Pérez",
@@ -45,18 +73,12 @@ materiales_disponibles = [
     "012009U Fuente Alimentacion 12V - 1A / Extensor Wifi AIRTIES AIR4960X"
 ]
 
-# Inicializar estados de la sesión
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
 
-# --- BLOQUEO DE NOMBRE ---
+# Bloqueo de nombre de técnico si hay items
 esta_bloqueado = len(st.session_state.carrito) > 0
-
-tecnico = st.selectbox(
-    "👷 Nombre del Técnico:", 
-    lista_tecnicos, 
-    disabled=esta_bloqueado
-)
+tecnico = st.selectbox("👷 Nombre del Técnico:", lista_tecnicos, disabled=esta_bloqueado)
 
 # --- FORMULARIO DE ENTRADA ---
 with st.form("formulario_pedido", clear_on_submit=True):
@@ -64,14 +86,13 @@ with st.form("formulario_pedido", clear_on_submit=True):
     with col1:
         seleccion = st.selectbox("Selecciona el artículo:", materiales_disponibles)
     with col2:
-        # Al poner value=None, el campo queda vacío para escritura rápida
         cantidad = st.number_input("Cantidad:", min_value=1, step=1, value=None)
     
     boton_agregar = st.form_submit_button("Agregar al pedido")
     
     if boton_agregar:
         if tecnico == "Seleccionar...":
-            st.error("⚠️ Selecciona un técnico primero.")
+            st.error("⚠️ Selecciona tu nombre de técnico.")
         elif cantidad is None:
             st.error("⚠️ Ingresa una cantidad.")
         else:
@@ -83,7 +104,8 @@ with st.form("formulario_pedido", clear_on_submit=True):
                 "Tecnico": tecnico,
                 "Codigo": cod,
                 "Articulo": nom,
-                "Cantidad": cantidad
+                "Cantidad": cantidad,
+                "Email_Validado": st.session_state.email_login # Agregamos el email al registro
             })
             st.rerun()
 
@@ -103,12 +125,12 @@ if st.session_state.carrito:
         if st.button("🚀 ENVIAR PEDIDO"):
             try:
                 conn = st.connection("gsheets", type=GSheetsConnection)
-                
                 try:
                     existente = conn.read(worksheet="Pedidos", ttl=0)
                     existente = existente.dropna(how='all')
                 except Exception:
-                    existente = pd.DataFrame(columns=["Tecnico", "Codigo", "Articulo", "Cantidad"])
+                    # Agregamos la columna Email_Validado al Excel
+                    existente = pd.DataFrame(columns=["Tecnico", "Codigo", "Articulo", "Cantidad", "Email_Validado"])
                 
                 actualizado = pd.concat([existente, df_pedido], ignore_index=True)
                 conn.update(worksheet="Pedidos", data=actualizado)
@@ -121,4 +143,4 @@ if st.session_state.carrito:
             except Exception as e:
                 st.error(f"Error: {e}")
 else:
-    st.info("Selecciona materiales para comenzar.")
+    st.info("Carga materiales para comenzar.")
