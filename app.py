@@ -21,7 +21,7 @@ def check_login():
         else:
             st.error("🚫 Este correo no está autorizado.")
     except Exception:
-        st.error("⚠️ Error: Configura la lista de correos en los Secrets.")
+        st.error("⚠️ Error: Configura los correos en Secrets.")
 
 if not st.session_state.autenticado:
     st.title("🔐 Acceso")
@@ -62,34 +62,38 @@ materiales_disponibles = [
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
 
-# FORMULARIO
+# FORMULARIO CON TEXT_INPUT PARA EVITAR EL BUG DEL 0
 with st.form("formulario_pedido", clear_on_submit=True):
     col1, col2 = st.columns([2, 1])
     with col1:
         seleccion = st.selectbox("Selecciona artículo:", materiales_disponibles)
     with col2:
-        # Usamos 0 como valor base para que el teclado numérico se active
-        # pero validamos que sea mayor a 0 al enviar.
-        cantidad = st.number_input("Cantidad:", min_value=0, step=1, value=0)
+        # Usamos text_input para que el técnico tenga control total al borrar
+        cantidad_str = st.text_input("Cantidad:", placeholder="0")
     
     boton_agregar = st.form_submit_button("Agregar al pedido")
     
     if boton_agregar:
-        if cantidad <= 0:
-            st.warning("⚠️ La cantidad debe ser mayor a 0.")
-        else:
-            partes = seleccion.split(" ", 1)
-            cod = partes[0]
-            nom = partes[1] if len(partes) > 1 else ""
-            st.session_state.carrito.append({
-                "Tecnico": st.session_state.email_usuario,
-                "Codigo": cod,
-                "Articulo": nom,
-                "Cantidad": cantidad
-            })
-            st.rerun()
+        # Intentamos convertir el texto a número
+        try:
+            cantidad_num = int(cantidad_str)
+            if cantidad_num <= 0:
+                st.warning("⚠️ La cantidad debe ser mayor a 0.")
+            else:
+                partes = seleccion.split(" ", 1)
+                cod = partes[0]
+                nom = partes[1] if len(partes) > 1 else ""
+                st.session_state.carrito.append({
+                    "Tecnico": st.session_state.email_usuario,
+                    "Codigo": cod,
+                    "Articulo": nom,
+                    "Cantidad": cantidad_num
+                })
+                st.rerun()
+        except ValueError:
+            st.error("⚠️ Por favor, ingresa solo números en la cantidad.")
 
-# RESUMEN
+# RESUMEN Y ENVÍO
 if st.session_state.carrito:
     st.subheader("🛒 Pedido actual")
     df_pedido = pd.DataFrame(st.session_state.carrito)
