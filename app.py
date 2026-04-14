@@ -8,7 +8,7 @@ import time
 # 1. CONFIGURACIÓN
 st.set_page_config(page_title="SGM - Gestión", page_icon="🏢", layout="wide")
 
-# 2. CSS (Compacto y Ajustado)
+# 2. CSS PARA COMPACIDAD Y ESTILO
 st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
@@ -26,9 +26,13 @@ st.markdown("""
 def es_horario_permitido():
     tz_ba = pytz.timezone('America/Argentina/Buenos_Aires')
     ahora = datetime.now(tz_ba)
-    dia_semana = ahora.weekday() # 0=Lunes, 2=Miércoles, 4=Viernes
+    dia_semana = ahora.weekday() # 0=Lun, 1=Mar, 2=Mie, 3=Jue, 4=Vie
     hora_actual = ahora.hour
-    return dia_semana in [0, 2, 4] and 7 <= hora_actual < 15
+    
+    # Lunes (0), Miércoles (2), Viernes (4) entre las 07:00 y las 14:59:59
+    dias_ok = dia_semana in [0, 2, 4]
+    hora_ok = 7 <= hora_actual < 15
+    return dias_ok and hora_ok
 
 # 4. ESTADOS
 if 'autenticado' not in st.session_state: st.session_state.autenticado = False
@@ -92,10 +96,12 @@ if st.session_state.seccion == "Menu":
         if c2.button("🧼\nLIMPIEZA"): cambiar_seccion("Insumos_Limpieza"); st.rerun()
     else:
         c1, c2, c3 = st.columns(3)
+        
+        # --- RESTRICCIÓN DE MATERIALES REAPLICADA ---
         if es_horario_permitido():
             if c1.button("📦\nMATERIALES"): cambiar_seccion("Materiales"); st.rerun()
         else:
-            c1.button("🔒\nMATERIALES (CERRADO)", disabled=True)
+            c1.button("🔒\nMAT. CERRADO", disabled=True, help="LUN-MIE-VIE de 07:00 a 15:00")
             
         if c2.button("🔧\nHERRAMIENTAS"): cambiar_seccion("Herramientas"); st.rerun()
         if c3.button("👕\nINDUMENTARIA"): cambiar_seccion("Indumentaria"); st.rerun()
@@ -103,14 +109,14 @@ if st.session_state.seccion == "Menu":
 
 # 7. PANEL DE CARGA
 st.button("⬅️ Menú", on_click=lambda: cambiar_seccion("Menu"))
-st.subheader(f"📍 {st.session_state.seccion}")
+st.subheader(f"📍 {st.session_state.seccion.replace('_', ' ')}")
 
 listas = {
     "Materiales": ["13008 CONTROL", "30032 CABLE", "31025 PRECINTO"],
     "Herramientas": ["PINZA DE PUNTA", "ALICATE", "DESTORNILLADOR PH", "DESTORNILLADOR PL"],
     "Indumentaria": ["PANTALON T.40", "PANTALON T.42", "CHOMBA L", "CHOMBA XL", "BOTINES"],
-    "Insumos_Libreria": ["Resma A4", "Lapicera Azul", "Cuaderno Uni."],
-    "Insumos_Limpieza": ["Lavandina 5L", "Detergente", "Trapo Piso"]
+    "Insumos_Libreria": ["Resma A4", "Lapicera Azul"],
+    "Insumos_Limpieza": ["Lavandina 5L", "Detergente"]
 }
 items = listas.get(st.session_state.seccion, [])
 
@@ -121,7 +127,6 @@ with t1:
         sel = st.selectbox("Artículo:", items)
         cant = st.number_input("Cantidad:", min_value=1, step=1, value=1)
         
-        # MOTIVOS SEGÚN SECCIÓN
         motivo = ""
         if st.session_state.seccion == "Herramientas":
             motivo = st.selectbox("Motivo:", ["Rotura", "Perdido", "Nunca entregado"])
@@ -129,14 +134,12 @@ with t1:
             motivo = st.selectbox("Motivo:", ["Desgaste", "Nunca entregado"])
             
         if st.form_submit_button("AGREGAR AL RESUMEN", use_container_width=True):
-            # EVITAR DUPLICADOS: Comprobar si el artículo (y motivo) ya están en el carrito
-            ya_existe = any(i['Articulo'] == sel and i.get('Motivo', '') == motivo for i in st.session_state.carrito)
-            
-            if ya_existe:
-                st.warning(f"⚠️ El artículo '{sel}' ya está en tu lista de resumen.")
+            # BLOQUEO DE DUPLICADOS (Solo por nombre de artículo)
+            if any(i['Articulo'] == sel for i in st.session_state.carrito):
+                st.warning(f"⚠️ '{sel}' ya está en el resumen.")
             else:
                 st.session_state.carrito.append({
-                    "Fecha": datetime.now().strftime("%d/%m/%Y"),
+                    "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M"),
                     "Email": st.session_state.datos_usuario.get('Email'),
                     "Nombre": st.session_state.datos_usuario.get('Nombre'),
                     "Apellido": st.session_state.datos_usuario.get('Apellido'),
@@ -144,16 +147,14 @@ with t1:
                     "DNI": st.session_state.datos_usuario.get('DNI'),
                     "Articulo": sel, 
                     "Cantidad": int(cant),
-                    "Motivo": motivo # Se guarda vacío si no aplica
+                    "Motivo": motivo
                 })
                 st.rerun()
 
 with t2:
     if not st.session_state.carrito:
-        st.info("No hay artículos en el Resumen Pedido.")
+        st.info("No hay artículos en el pedido.")
     else:
-        # Título de la planilla renombrada
-        st.markdown("**Resumen Pedido**")
         h1, h2, h3 = st.columns([1, 6, 0.8])
         h1.markdown('<div class="header-box">CANT</div>', unsafe_allow_html=True)
         h2.markdown('<div class="header-box">DESCRIPCIÓN / MOTIVO</div>', unsafe_allow_html=True)
@@ -162,18 +163,13 @@ with t2:
         for idx, item in enumerate(st.session_state.carrito):
             r1, r2, r3 = st.columns([1, 6, 0.8])
             r1.markdown(f'<div class="cell-data" style="text-align:center; width:100%">{item["Cantidad"]}</div>', unsafe_allow_html=True)
-            
-            # Mostrar motivo si existe
-            desc_completa = item["Articulo"]
-            if item["Motivo"]:
-                desc_completa += f" ({item['Motivo']})"
-                
-            r2.markdown(f'<div class="cell-data">{desc_completa}</div>', unsafe_allow_html=True)
+            txt_motivo = f" ({item.get('Motivo', '')})" if item.get('Motivo') else ""
+            r2.markdown(f'<div class="cell-data">{item["Articulo"]}{txt_motivo}</div>', unsafe_allow_html=True)
             if r3.button("X", key=f"del_{idx}"):
                 st.session_state.carrito.pop(idx); st.rerun()
         
         if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
             df_new = pd.DataFrame(st.session_state.carrito)
             df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
-            conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new]))
-            st.success("Enviado con éxito."); st.session_state.carrito = []; time.sleep(1); st.rerun()
+            conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new], ignore_index=True))
+            st.success("¡Pedido enviado con éxito!"); st.session_state.carrito = []; time.sleep(1); st.rerun()
