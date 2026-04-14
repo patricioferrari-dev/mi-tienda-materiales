@@ -16,6 +16,8 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
+    /* Estilo para que las tablas ocupen todo el ancho */
+    .stDataFrame { width: 100%; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -109,7 +111,7 @@ if st.session_state.seccion == "Menu":
         if col3.button("👕\nIndumentaria"): st.session_state.seccion = "Indumentaria"; st.rerun()
     st.stop()
 
-# --- 5. INTERFAZ DE CARGA SIN CÓDIGOS PARA LIBRERÍA/LIMPIEZA ---
+# --- 5. INTERFAZ DE CARGA ---
 st.button("⬅️ Menú Principal", on_click=lambda: setattr(st.session_state, 'seccion', 'Menu'))
 st.title(f"Sección: {st.session_state.seccion.replace('_', ' ')}")
 
@@ -117,13 +119,12 @@ listas = {
     "Materiales": ["13008 CONTROL", "30032 CABLE", "31025 PRECINTO"],
     "Herramientas": ["H001 PINZA", "H002 ALICATE"],
     "Indumentaria": ["I001 PANTALON", "I002 CHOMBA"],
-    # Aquí ya no usamos códigos al principio del nombre
     "Insumos_Libreria": ["Resma A4", "Lapicera Azul", "Cuaderno Universitario", "Cinta de Embalar"],
     "Insumos_Limpieza": ["Lavandina 5L", "Detergente", "Trapo de Piso", "Bolsas de Consorcio"]
 }
 items = listas.get(st.session_state.seccion, [])
 
-tab1, tab2 = st.tabs(["📝 Cargar", "🛒 Mi Pedido"])
+tab1, tab2 = st.tabs(["📝 Cargar Artículos", "🛒 Mi Pedido (Resumen)"])
 
 with tab1:
     with st.form("f_carga", clear_on_submit=True):
@@ -135,13 +136,10 @@ with tab1:
             
         if st.form_submit_button("➕ AÑADIR"):
             if cant.isdigit() and int(cant) > 0:
-                # LÓGICA DIFERENCIADA:
                 if st.session_state.seccion in ["Insumos_Libreria", "Insumos_Limpieza"]:
-                    # No hay código, usamos el nombre completo
-                    codigo_final = "S/C" # Sin Código
+                    codigo_final = "S/C"
                     articulo_final = sel
                 else:
-                    # Formato tradicional: separar por el primer espacio
                     codigo_final = sel.split(" ", 1)[0]
                     articulo_final = sel.split(" ", 1)[1] if " " in sel else ""
 
@@ -155,24 +153,52 @@ with tab1:
                     "Motivo": mot,
                     "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M")
                 })
+                st.success(f"Añadido: {articulo_final}")
+                time.sleep(0.5)
                 st.rerun()
 
 with tab2:
-    if not st.session_state.carrito: st.info("Carrito vacío.")
+    if not st.session_state.carrito:
+        st.info("El carrito está vacío.")
     else:
-        for i, item in enumerate(st.session_state.carrito):
-            # Si no tiene código, mostramos solo el artículo
-            texto_mostrar = f"**{item['Articulo']}** (x{item['Cantidad']})" if item['Codigo'] == "S/C" else f"**{item['Codigo']}** - {item['Articulo']} (x{item['Cantidad']})"
-            st.write(texto_mostrar)
-            if st.button("❌", key=f"del_{i}"):
-                st.session_state.carrito.pop(i)
-                st.rerun()
+        st.subheader("Artículos en el pedido actual:")
         
-        if st.button("🚀 ENVIAR PEDIDO"):
+        # --- NUEVA VISTA TIPO CELDA (DATAFRAME) ---
+        df_carrito = pd.DataFrame(st.session_state.carrito)
+        
+        # Seleccionamos y renombramos columnas para que se vea lindo en la app
+        columnas_vista = ["Codigo", "Articulo", "Cantidad"]
+        if st.session_state.seccion in ["Herramientas", "Indumentaria"]:
+            columnas_vista.append("Motivo")
+            
+        df_vista = df_carrito[columnas_vista]
+        
+        # Mostramos la tabla
+        st.dataframe(df_vista, use_container_width=True, hide_index=True)
+        
+        st.divider()
+        
+        # Opción para borrar el último o limpiar todo
+        col_del1, col_del2 = st.columns(2)
+        if col_del1.button("🗑️ Borrar último artículo"):
+            st.session_state.carrito.pop()
+            st.rerun()
+        if col_del2.button("🧹 Vaciar todo el carrito"):
+            st.session_state.carrito = []
+            st.rerun()
+
+        st.divider()
+        
+        if st.button("🚀 CONFIRMAR Y ENVIAR PEDIDO"):
             try:
                 df_e = pd.DataFrame(st.session_state.carrito)
                 ex = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
                 conn.update(worksheet=st.session_state.seccion, data=pd.concat([ex, df_e]))
-                st.success("¡Pedido enviado!"); st.session_state.carrito = []
-                st.session_state.seccion = "Menu"; time.sleep(2); st.rerun()
-            except Exception as e: st.error(f"Error: {e}")
+                st.balloons()
+                st.success("¡Pedido enviado correctamente!")
+                st.session_state.carrito = []
+                st.session_state.seccion = "Menu"
+                time.sleep(2)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error: {e}")
