@@ -3,28 +3,32 @@ import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
 import pytz
+import time
 
-# 1. CONFIGURACIÓN DE PÁGINA Y ESTILOS
-st.set_page_config(page_title="Sistema de Pedidos", page_icon="📦", layout="centered")
+# 1. CONFIGURACIÓN DE PÁGINA
+st.set_page_config(page_title="SGM - Gestión de Materiales", page_icon="🏢", layout="centered")
 
-# CSS para ocultar menús
-hide_style = """
+# CSS para profesionalizar la interfaz
+st.markdown("""
     <style>
+    .main { background-color: #f8f9fa; }
+    .stButton>button { width: 100%; border-radius: 10px; font-weight: bold; }
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+    .stTabs [data-baseweb="tab"] { 
+        background-color: #f0f2f6; 
+        border-radius: 5px 5px 0px 0px; 
+        padding: 10px;
+    }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    .stDeployButton {display:none;}
-    .stButton > button {padding: 2px 10px; border-radius: 5px;}
     </style>
-    """
-st.markdown(hide_style, unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 # --- LÓGICA DE HORARIO (07:00 A 15:00 ARGENTINA) ---
 tz_arg = pytz.timezone('America/Argentina/Buenos_Aires')
 ahora_arg = datetime.now(tz_arg)
 hora_actual = ahora_arg.time()
-
-# Definimos los límites
 hora_inicio = datetime.strptime("07:00", "%H:%M").time()
 hora_fin = datetime.strptime("15:00", "%H:%M").time()
 
@@ -42,18 +46,18 @@ def check_login():
         else:
             st.error("🚫 Correo no autorizado.")
     except:
-        st.error("⚠️ Error en Secrets.")
+        st.error("⚠️ Error: Configura los correos en Secrets.")
 
 if not st.session_state.autenticado:
-    st.title("🔐 Acceso")
-    st.text_input("Ingresa tu Email:", key="email_login", on_change=check_login)
+    st.title("🔐 Acceso al Sistema")
+    st.info("Ingresa tu correo corporativo para continuar.")
+    st.text_input("Correo Electrónico:", key="email_login", on_change=check_login)
     st.stop()
 
 # --- VALIDACIÓN DE RANGO HORARIO ---
-# Si la hora actual NO está entre las 07:00 y las 15:00, bloqueamos.
 if not (hora_inicio <= hora_actual <= hora_fin):
     st.title("🕒 Sistema Fuera de Horario")
-    st.warning(f"Hola {st.session_state.email_usuario}. El sistema opera de **07:00 a 15:00 hs**.")
+    st.warning(f"Estimado técnico, el sistema opera de **07:00 a 15:00 hs**.")
     st.info(f"Hora actual en Argentina: **{hora_actual.strftime('%H:%M')}**")
     st.stop()
 
@@ -65,15 +69,16 @@ try:
     df_auth = conn.read(worksheet="Autorizaciones", ttl=0)
     if st.session_state.email_usuario in df_auth[df_auth['Estado'] == 'Bloqueado']['Email'].values:
         st.title("🚫 Acceso Restringido")
-        st.error("Ya registraste un pedido hoy. Acceso pausado hasta mañana.")
+        st.error("Usted ya ha realizado un pedido hoy. Si necesita cargar otro, contacte al supervisor.")
         st.stop()
 except:
     pass
 
-# --- FORMULARIO DE CARGA ---
-st.title("📦 Formulario de Pedidos")
-st.success(f"👷 Técnico: **{st.session_state.email_usuario}**")
+# --- INTERFAZ PRINCIPAL ---
+st.title("🏢 SGM - Logística")
+st.caption(f"👷 Conectado como: **{st.session_state.email_usuario}**")
 
+# Definición de materiales
 materiales_disponibles = [
     "13008 CONTROL REMOTO PARA DECO SAGECOM DCWMI303. CON BOT",
     "30032 CABLE COAXIL RG6 QUADSHIELD NEGRO CON PORTANTE",
@@ -104,69 +109,44 @@ materiales_disponibles = [
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
 
-with st.form("formulario_pedido", clear_on_submit=True):
-    col_art, col_cant = st.columns([3, 1])
-    with col_art:
+# Pestañas para organizar el flujo
+tab_carga, tab_resumen = st.tabs(["📝 Cargar Material", "🛒 Ver mi Pedido"])
+
+with tab_carga:
+    with st.form("formulario_pedido", clear_on_submit=True):
+        st.subheader("Seleccionar Materiales")
         seleccion = st.selectbox("Artículo:", materiales_disponibles)
-    with col_cant:
-        cantidad_str = st.text_input("Cant:", placeholder="0")
-    
-    if st.form_submit_button("➕ AGREGAR AL RESUMEN"):
-        try:
-            cantidad_num = int(cantidad_str)
-            if cantidad_num > 0:
-                partes = seleccion.split(" ", 1)
-                st.session_state.carrito.append({
-                    "Tecnico": st.session_state.email_usuario,
-                    "Codigo": partes[0],
-                    "Articulo": partes[1] if len(partes) > 1 else "",
-                    "Cantidad": cantidad_num
-                })
-                st.rerun()
-            else:
-                st.error("Mínimo 1")
-        except ValueError:
-            st.error("Ingresa un número")
-
-# --- RESUMEN CON X PARA ELIMINAR ---
-if st.session_state.carrito:
-    st.markdown("---")
-    st.subheader("🛒 Tu Pedido")
-    for i, item in enumerate(st.session_state.carrito):
-        c1, c2, c3 = st.columns([3, 1, 0.5])
-        c1.write(f"{item['Codigo']} - {item['Articulo']}")
-        c2.write(f"{item['Cantidad']}")
-        if c3.button("❌", key=f"btn_{i}"):
-            st.session_state.carrito.pop(i)
-            st.rerun()
-
-    st.markdown("---")
-    if st.button("🚀 ENVIAR PEDIDO COMPLETO"):
-        try:
-            df_final = pd.DataFrame(st.session_state.carrito)
-            
-            # 1. Guardar Pedidos
+        cantidad_str = st.text_input("Cantidad:", placeholder="Ej: 10")
+        
+        if st.form_submit_button("➕ AÑADIR AL PEDIDO"):
             try:
-                existente = conn.read(worksheet="Pedidos", ttl=0).dropna(how='all')
-            except:
-                existente = pd.DataFrame(columns=["Tecnico", "Codigo", "Articulo", "Cantidad"])
-                
-            act_pedidos = pd.concat([existente, df_final], ignore_index=True)
-            conn.update(worksheet="Pedidos", data=act_pedidos)
-            
-            # 2. Registrar Bloqueo
-            try:
-                ex_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
-            except:
-                ex_auth = pd.DataFrame(columns=["Email", "Estado"])
-            
-            nuevo_b = pd.DataFrame([{"Email": st.session_state.email_usuario, "Estado": "Bloqueado"}])
-            act_auth = pd.concat([ex_auth, nuevo_b], ignore_index=True)
-            conn.update(worksheet="Autorizaciones", data=act_auth)
-            
-            st.balloons()
-            st.success("✅ ¡Enviado!")
-            st.session_state.carrito = []
-            st.rerun()
-        except Exception as e:
-            st.error(f"Error: {e}")
+                cantidad_num = int(cantidad_str)
+                if cantidad_num > 0:
+                    partes = seleccion.split(" ", 1)
+                    st.session_state.carrito.append({
+                        "Tecnico": st.session_state.email_usuario,
+                        "Codigo": partes[0],
+                        "Articulo": partes[1] if len(partes) > 1 else "",
+                        "Cantidad": cantidad_num
+                    })
+                    st.toast(f"Añadido: {partes[0]}", icon="✅")
+                    # Un pequeño delay antes del rerun mejora la animación del toast
+                    time.sleep(0.5)
+                    st.rerun()
+                else:
+                    st.error("La cantidad debe ser mayor a 0.")
+            except ValueError:
+                st.error("Por favor, ingresa solo números en la cantidad.")
+
+with tab_resumen:
+    if not st.session_state.carrito:
+        st.info("Tu pedido está vacío. Comienza cargando materiales en la pestaña anterior.")
+    else:
+        st.subheader("Artículos Cargados")
+        # Mostrar items con opción de borrar
+        for i, item in enumerate(st.session_state.carrito):
+            col_txt, col_cant, col_del = st.columns([3, 1, 0.5])
+            col_txt.write(f"**{item['Codigo']}** - {item['Articulo']}")
+            col_cant.write(f"Cant: {item['Cantidad']}")
+            if col_del.button("❌", key=f"del_{i}"):
+                st.session_state.carrito.pop(
