@@ -41,9 +41,9 @@ def validar_email():
         else:
             st.error("🚫 Correo no autorizado en la lista blanca.")
     except:
-        st.error("⚠️ Error: Configura 'usuarios_autorizados' in Secrets.")
+        st.error("⚠️ Error: Configura 'usuarios_autorizados' en Secrets.")
 
-# --- FLUJO DE LOGIN / REGISTRO ---
+# --- FLUJO DE LOGIN / REGISTRO / RESETEO ---
 if not st.session_state.autenticado:
     st.title("🔐 Acceso al Sistema")
     
@@ -51,88 +51,86 @@ if not st.session_state.autenticado:
         st.text_input("Correo Electrónico:", key="email_input", on_change=validar_email)
         st.stop()
 
+    # Leer base de datos
     df_db = conn.read(worksheet="DB_Tecnicos", ttl=0).dropna(how='all')
-    user_info = df_db[df_db['Email'] == st.session_state.email_usuario]
+    user_row = df_db[df_db['Email'] == st.session_state.email_usuario]
 
-    if user_info.empty:
-        st.warning(f"Hola {st.session_state.email_usuario}, no estás registrado. Completa tus datos:")
-        
+    if user_row.empty:
+        # --- PROCESO DE REGISTRO INICIAL ---
+        st.warning("No estás registrado. Completa tus datos:")
         with st.form("registro_nuevo"):
             col_a, col_b = st.columns(2)
-            # El usuario ahora puede poner puntos, el código los limpiará
-            dni_input = col_a.text_input("DNI (puedes usar puntos):")
+            dni_input = col_a.text_input("DNI:")
             nombre = col_b.text_input("Nombre:")
             apellido = col_a.text_input("Apellido:")
             celular = col_b.text_input("Celular:")
             password = st.text_input("Crea una Contraseña:", type="password")
             
-            if st.form_submit_button("Validar y Finalizar Registro"):
-                if all([nombre, apellido, dni_input, celular, password]):
-                    # --- LIMPIEZA DE DNI ---
-                    # Quitamos puntos y espacios del input del usuario
-                    dni_limpio = dni_input.replace(".", "").replace(" ", "").strip()
+            if st.form_submit_button("Validar y Registrar"):
+                dni_limpio = dni_input.replace(".", "").replace(" ", "").strip()
+                try:
+                    df_padron = conn.read(worksheet="Padron_DNI", ttl=0).dropna(how='all')
+                    lista_dnis = df_padron['DNI'].astype(str).str.replace(".0", "", regex=False).tolist()
                     
-                    try:
-                        df_padron = conn.read(worksheet="Padron_DNI", ttl=0).dropna(how='all')
-                        # Limpiamos también el padrón por si el Excel tiene puntos o es formato numérico
-                        lista_dnis_validos = df_padron['DNI'].astype(str).str.replace(".0", "", regex=False).str.replace(".", "", regex=False).tolist()
-                        
-                        if dni_limpio in lista_dnis_validos:
-                            # Guardamos el DNI con formato de puntos para que se vea lindo en el Excel
-                            dni_con_puntos = "{:,}".format(int(dni_limpio)).replace(",", ".")
-                            
-                            nuevo_perfil = pd.DataFrame([{
-                                "Email": st.session_state.email_usuario,
-                                "Nombre": nombre.title(),
-                                "Apellido": apellido.title(),
-                                "Celular": celular,
-                                "DNI": dni_con_puntos,
-                                "Contrasena": password
-                            }])
-                            df_actualizado = pd.concat([df_db, nuevo_perfil], ignore_index=True)
-                            conn.update(worksheet="DB_Tecnicos", data=df_actualizado)
-                            st.success(f"✅ DNI {dni_con_puntos} Verificado. Registro exitoso.")
-                            time.sleep(2)
-                            st.rerun()
-                        else:
-                            st.error(f"❌ El DNI {dni_limpio} no figura en el padrón. Verifique que sea correcto o contacte al supervisor.")
-                    except Exception as e:
-                        st.error(f"Error al validar DNI: {e}")
-                else:
-                    st.error("Todos los campos son obligatorios.")
+                    if dni_limpio in lista_dnis:
+                        dni_formato = "{:,}".format(int(dni_limpio)).replace(",", ".")
+                        nuevo = pd.DataFrame([{"Email": st.session_state.email_usuario, "Nombre": nombre.title(), "Apellido": apellido.title(), "Celular": celular, "DNI": dni_formato, "Contrasena": password}])
+                        conn.update(worksheet="DB_Tecnicos", data=pd.concat([df_db, nuevo], ignore_index=True))
+                        st.success("✅ Registro exitoso.")
+                        time.sleep(2)
+                        st.rerun()
+                    else:
+                        st.error("DNI no autorizado en el padrón.")
+                except Exception as e:
+                    st.error(f"Error: {e}")
         st.stop()
+
     else:
-        # --- PROCESO DE LOGIN ---
-        pwd_input = st.text_input(f"Hola {user_info.iloc[0]['Nombre']}, ingresa tu contraseña:", type="password")
-        if st.button("Ingresar"):
-            if str(pwd_input) == str(user_info.iloc[0]['Contrasena']):
-                st.session_state.autenticado = True
-                st.session_state.datos_usuario = user_info.iloc[0].to_dict()
-                st.rerun()
-            else:
-                st.error("❌ Contraseña incorrecta.")
-        st.stop()
+        # --- USUARIO EXISTE: VERIFICAR SI TIENE CONTRASEÑA ---
+        datos_fila = user_row.iloc[0]
+        password_actual = str(datos_fila.get('Contrasena', '')).strip()
+
+        # CASO A: LA CONTRASEÑA FUE BORRADA EN EL EXCEL (Reset obligatorio)
+        if password_actual == "" or password_actual == "nan" or password_actual == "None":
+            st.info(f"Hola {datos_fila['Nombre']}, tu contraseña ha sido reseteada. Por favor, genera una nueva.")
+            with st.form("reset_pwd"):
+                nueva_pwd = st.text_input("Nueva Contraseña:", type="password")
+                confirmar_pwd = st.text_input("Confirmar Nueva Contraseña:", type="password")
+                
+                if st.form_submit_button("Actualizar Contraseña"):
+                    if nueva_pwd and nueva_pwd == confirmar_pwd:
+                        # Actualizamos la fila en el DataFrame local y luego al Excel
+                        df_db.loc[df_db['Email'] == st.session_state.email_usuario, 'Contrasena'] = nueva_pwd
+                        conn.update(worksheet="DB_Tecnicos", data=df_db)
+                        st.success("✅ Contraseña actualizada correctamente.")
+                        time.sleep(2)
+                        st.rerun()
+                    else:
+                        st.error("Las contraseñas no coinciden o están vacías.")
+            st.stop()
+
+        # CASO B: LOGIN NORMAL
+        else:
+            pwd_input = st.text_input(f"Hola {datos_fila['Nombre']}, ingresa tu contraseña:", type="password")
+            if st.button("Ingresar"):
+                if str(pwd_input) == password_actual:
+                    st.session_state.autenticado = True
+                    st.session_state.datos_usuario = datos_fila.to_dict()
+                    st.rerun()
+                else:
+                    st.error("❌ Contraseña incorrecta.")
+            st.stop()
 
 # 4. MENÚ PRINCIPAL
 if st.session_state.seccion == "Menu":
     st.title("🏢 SGM - Panel de Gestión")
     st.markdown(f"Bienvenido: **{st.session_state.datos_usuario['Nombre']} {st.session_state.datos_usuario['Apellido']}**")
-    st.caption(f"🆔 DNI: {st.session_state.datos_usuario['DNI']} | 📱 Cel: {st.session_state.datos_usuario['Celular']}")
     st.divider()
     
     col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("📦\nMateriales"):
-            st.session_state.seccion = "Materiales"
-            st.rerun()
-    with col2:
-        if st.button("🔧\nHerramientas"):
-            st.session_state.seccion = "Herramientas"
-            st.rerun()
-    with col3:
-        if st.button("👕\nIndumentaria"):
-            st.session_state.seccion = "Indumentaria"
-            st.rerun()
+    if col1.button("📦\nMateriales"): st.session_state.seccion = "Materiales"; st.rerun()
+    if col2.button("🔧\nHerramientas"): st.session_state.seccion = "Herramientas"; st.rerun()
+    if col3.button("👕\nIndumentaria"): st.session_state.seccion = "Indumentaria"; st.rerun()
     st.stop()
 
 # 5. VALIDACIONES PARA MATERIALES
@@ -140,13 +138,11 @@ if st.session_state.seccion == "Materiales":
     tz_arg = pytz.timezone('America/Argentina/Buenos_Aires')
     ahora_arg = datetime.now(tz_arg)
     if ahora_arg.weekday() not in [0, 2, 4] or not (7 <= ahora_arg.hour < 15):
-        st.error("🕒 Materiales solo L-M-V de 07:00 a 15:00 hs.")
-        if st.button("⬅️ Menú"):
-            st.session_state.seccion = "Menu"
-            st.rerun()
+        st.error("🕒 L-M-V de 07:00 a 15:00 hs.")
+        if st.button("⬅️ Menú"): st.session_state.seccion = "Menu"; st.rerun()
         st.stop()
 
-# 6. LISTAS DE ARTÍCULOS
+# 6. LISTAS Y CARGA (Sigue igual que antes...)
 listas = {
     "Materiales": ["13008 CONTROL", "30032 CABLE", "31025 PRECINTO"],
     "Herramientas": ["H001 PINZA", "H002 ALICATE", "H003 PELACABLE"],
@@ -154,7 +150,6 @@ listas = {
 }
 items_disponibles = listas.get(st.session_state.seccion, [])
 
-# 7. INTERFAZ DE CARGA
 st.button("⬅️ Menú Principal", on_click=lambda: setattr(st.session_state, 'seccion', 'Menu'))
 st.title(f"Sección: {st.session_state.seccion}")
 
@@ -167,15 +162,11 @@ with tab_carga:
         if st.session_state.seccion in ["Herramientas", "Indumentaria"]:
             opciones = ["Cambio", "Perdido", "Nunca entregado"] if st.session_state.seccion == "Herramientas" else ["Desgaste", "Nunca entregado"]
             motivo = st.radio("Motivo:", opciones, horizontal=True)
-        
         cantidad = st.text_input("Cantidad:")
-        
         if st.form_submit_button("➕ AÑADIR"):
             if cantidad.isdigit() and int(cantidad) > 0:
                 codigo = seleccion.split(" ", 1)[0]
-                if any(i['Codigo'] == codigo for i in st.session_state.carrito):
-                    st.error("Ya está en el carrito.")
-                else:
+                if not any(i['Codigo'] == codigo for i in st.session_state.carrito):
                     st.session_state.carrito.append({
                         "Nombre": st.session_state.datos_usuario['Nombre'],
                         "Apellido": st.session_state.datos_usuario['Apellido'],
@@ -183,8 +174,7 @@ with tab_carga:
                         "Celular": st.session_state.datos_usuario['Celular'],
                         "Codigo": codigo,
                         "Articulo": seleccion.split(" ", 1)[1] if " " in seleccion else "",
-                        "Cantidad": int(cantidad),
-                        "Motivo": motivo,
+                        "Cantidad": int(cantidad), "Motivo": motivo,
                         "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M")
                     })
                     st.rerun()
@@ -195,21 +185,15 @@ with tab_resumen:
     else:
         for i, item in enumerate(st.session_state.carrito):
             st.write(f"**{item['Codigo']}** - {item['Articulo']} (x{item['Cantidad']})")
-            if st.button("❌", key=f"del_{i}"):
-                st.session_state.carrito.pop(i)
-                st.rerun()
-        
+            if st.button("❌", key=f"del_{i}"): st.session_state.carrito.pop(i); st.rerun()
         if st.button("🚀 ENVIAR TODO"):
             try:
                 hoja = st.session_state.seccion
                 df_envio = pd.DataFrame(st.session_state.carrito)
                 existente = conn.read(worksheet=hoja, ttl=0).dropna(how='all')
                 conn.update(worksheet=hoja, data=pd.concat([existente, df_envio], ignore_index=True))
-                
                 st.success("¡Pedido enviado!")
                 st.session_state.carrito = []
                 st.session_state.seccion = "Menu"
-                time.sleep(2)
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error: {e}")
+                time.sleep(2); st.rerun()
+            except Exception as e: st.error(f"Error: {e}")
