@@ -78,7 +78,7 @@ with st.form("formulario_pedido", clear_on_submit=True):
     with col1:
         seleccion = st.selectbox("Selecciona el artículo:", materiales_disponibles)
     with col2:
-        # Campo vacío para llenado rápido
+        # El valor es None para que aparezca vacío y sea fácil de llenar
         cantidad = st.number_input("Cantidad:", min_value=1, step=1, value=None)
     
     boton_agregar = st.form_submit_button("Agregar al pedido")
@@ -116,5 +116,26 @@ if st.session_state.carrito:
             try:
                 conn = st.connection("gsheets", type=GSheetsConnection)
                 try:
+                    # Leemos los datos actuales
                     existente = conn.read(worksheet="Pedidos", ttl=0)
-                    existente = existente.dropna(
+                    # Eliminamos filas que estén totalmente vacías
+                    existente = existente.dropna(how='all')
+                except Exception:
+                    # Si falla la lectura, creamos las columnas base
+                    existente = pd.DataFrame(columns=["Tecnico", "Codigo", "Articulo", "Cantidad"])
+                
+                # Unimos el pedido nuevo con lo que ya estaba en la hoja
+                actualizado = pd.concat([existente, df_pedido], ignore_index=True)
+                
+                # Subimos la actualización
+                conn.update(worksheet="Pedidos", data=actualizado)
+                
+                st.balloons()
+                st.success("✅ ¡Pedido enviado correctamente!")
+                st.session_state.carrito = []
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"Error al conectar con la hoja: {e}")
+else:
+    st.info("Agrega materiales para comenzar tu pedido.")
