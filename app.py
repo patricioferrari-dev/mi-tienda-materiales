@@ -71,29 +71,50 @@ if st.session_state.seccion == "Menu":
             st.rerun()
     st.stop()
 
-# 6. VALIDACIONES EXCLUSIVAS PARA MATERIALES
+# 6. VALIDACIONES EXCLUSIVAS PARA MATERIALES (L-M-V DE 07:00 A 15:00)
 if st.session_state.seccion == "Materiales":
-    # Validación Horaria
+    # Obtener fecha y hora actual de Argentina
     tz_arg = pytz.timezone('America/Argentina/Buenos_Aires')
     ahora_arg = datetime.now(tz_arg)
+    
+    # Lógica de Días (0=Lunes, 1=Martes, 2=Miércoles, 3=Jueves, 4=Viernes...)
+    dia_semana = ahora_arg.weekday() 
+    dias_permitidos = [0, 2, 4]  # Lunes, Miércoles y Viernes
+    
+    # Lógica de Horarios
     hora_actual = ahora_arg.time()
     hora_inicio = datetime.strptime("07:00", "%H:%M").time()
     hora_fin = datetime.strptime("15:00", "%H:%M").time()
 
-    if not (hora_inicio <= hora_actual <= hora_fin):
-        st.title("🕒 Fuera de Horario")
-        st.warning("El sistema de Materiales solo opera de 07:00 a 15:00 hs.")
+    # Validación combinada: Día Y Horario
+    es_dia_valido = dia_semana in dias_permitidos
+    es_hora_valida = hora_inicio <= hora_actual <= hora_fin
+
+    if not (es_dia_valido and es_hora_valida):
+        st.title("🕒 Sistema de Materiales Cerrado")
+        
+        if not es_dia_valido:
+            st.error("Hoy no es día de carga. El sistema de Materiales opera solo **Lunes, Miércoles y Viernes**.")
+        elif not es_hora_valida:
+            st.warning("El horario de carga es de **07:00 a 15:00 hs**.")
+            
+        st.info(f"Día actual: {ahora_arg.strftime('%A')} | Hora: {ahora_arg.strftime('%H:%M')}")
+        
         if st.button("⬅️ Volver al Menú"):
             st.session_state.seccion = "Menu"
             st.rerun()
         st.stop()
 
-    # Validación de Bloqueo por pedido previo
+    # Validación de Bloqueo por pedido previo (Hoja Autorizaciones)
     try:
         df_auth = conn.read(worksheet="Autorizaciones", ttl=0)
+        # Filtrar solo los bloqueos del día de hoy para que el próximo L/M/V pueda pedir de nuevo
+        hoy_str = ahora_arg.strftime("%Y-%m-%d")
+        # Nota: Para que esto sea exacto, tu hoja Autorizaciones debería tener una columna 'Fecha'
+        # Si no la tiene, el bloqueo será permanente hasta que borres la fila manualmente.
         if st.session_state.email_usuario in df_auth[df_auth['Estado'] == 'Bloqueado']['Email'].values:
             st.title("🚫 Acceso Restringido")
-            st.error("Ya has realizado un pedido de materiales hoy.")
+            st.error("Ya has realizado un pedido de materiales en esta jornada.")
             if st.button("⬅️ Volver al Menú"):
                 st.session_state.seccion = "Menu"
                 st.rerun()
