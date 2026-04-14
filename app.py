@@ -1,5 +1,5 @@
 import streamlit as st
-import pandas as pd
+import pd
 from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
 import time
@@ -7,60 +7,88 @@ import time
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="SGM - Gestión Integral", page_icon="🏢", layout="centered")
 
-# 2. CSS AVANZADO: Celdas con bordes totales (Tipo Tabla)
+# 2. CSS AVANZADO: Diseño de Tarjetas (Cards) y Grilla Técnica
 st.markdown("""
     <style>
-    .main { background-color: #f8f9fa; }
+    /* Fondo general de la app */
+    .stApp {
+        background-color: #f0f2f6;
+    }
     
-    /* Botones grandes del menú */
-    .stButton>button { width: 100%; border-radius: 10px; font-weight: bold; height: 3.5em; }
-    
-    /* Contenedor de la fila */
-    [data-testid="stHorizontalBlock"] {
-        gap: 0px !important;
-        margin-bottom: -1px !important; /* Superpone bordes para que no se vean dobles */
+    /* Contenedor principal tipo Tarjeta */
+    [data-testid="stVerticalBlock"] > div:has(div.stButton) {
+        background-color: #ffffff;
+        padding: 2rem;
+        border-radius: 15px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        border: 1px solid #e1e4e8;
+        margin-bottom: 1rem;
     }
 
-    /* Estilo de Celda (Columnas) */
+    /* Botones del menú principal */
+    .stButton>button {
+        width: 100%;
+        border-radius: 12px;
+        font-weight: bold;
+        height: 4em;
+        background-color: #ffffff;
+        border: 1px solid #d1d5db;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    }
+    
+    .stButton>button:hover {
+        border-color: #4CAF50;
+        color: #4CAF50;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+
+    /* Estilo de Celdas para la Tabla de Pedidos */
+    [data-testid="stHorizontalBlock"] {
+        gap: 0px !important;
+        margin-bottom: -1px !important;
+    }
+
     div[data-testid="stColumn"] {
-        border: 1px solid #000 !important; /* Borde total negro o gris oscuro */
-        padding: 10px !important;
+        border: 1px solid #dee2e6 !important;
+        padding: 12px !important;
         display: flex;
         align-items: center;
         justify-content: center;
-        background-color: white;
+        background-color: #ffffff;
     }
 
-    /* Ajuste específico para la columna de descripción (alineada a la izquierda) */
     div[data-testid="stColumn"]:nth-of-type(2) {
         justify-content: flex-start !important;
     }
 
-    /* Botón ELIMINAR (Sin cuadrado rojo, solo texto) */
+    /* Botón Eliminar Estilizado */
     div[data-testid="stColumn"] button {
         background-color: transparent !important;
-        color: #ff4b4b !important; /* Texto en rojo para advertencia */
-        border: 1px solid #ff4b4b !important;
-        height: 25px !important;
+        color: #dc3545 !important;
+        border: 1px solid #dc3545 !important;
+        height: 28px !important;
         width: auto !important;
-        padding: 0px 10px !important;
+        padding: 0px 12px !important;
         font-size: 11px !important;
         text-transform: uppercase;
         font-weight: bold !important;
+        border-radius: 6px !important;
     }
     
     div[data-testid="stColumn"] button:hover {
-        background-color: #ff4b4b !important;
+        background-color: #dc3545 !important;
         color: white !important;
     }
 
     .compact-text {
         font-size: 14px !important;
         margin: 0px !important;
-        padding: 0px !important;
-        color: #000;
+        color: #333;
     }
 
+    /* Ocultar elementos innecesarios */
     #MainMenu, footer, header {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
@@ -136,9 +164,11 @@ dni_actual = raw_dni.split(".")[0].replace(" ", "").replace(".", "")
 
 if st.session_state.seccion == "Menu":
     st.session_state.carrito = [] 
-    st.title("🏢 SGM - Gestión")
+    st.title("🏢 Panel de Control")
+    st.subheader(f"Bienvenido, {st.session_state.datos_usuario['Nombre']}")
     st.divider()
 
+    # Los botones dentro de este bloque ahora tendrán el fondo blanco y sombra
     if dni_actual == "1111111":
         col1, col2 = st.columns(2)
         if col1.button("📚\nInsumos Librería"): st.session_state.seccion = "Insumos_Libreria"; st.rerun()
@@ -151,7 +181,7 @@ if st.session_state.seccion == "Menu":
     st.stop()
 
 # 7. INTERFAZ DE CARGA
-st.button("⬅️ Menú Principal", on_click=lambda: setattr(st.session_state, 'seccion', 'Menu'))
+st.button("⬅️ Volver al Menú Principal", on_click=lambda: setattr(st.session_state, 'seccion', 'Menu'))
 st.title(f"{st.session_state.seccion.replace('_', ' ')}")
 
 listas = {
@@ -163,15 +193,15 @@ listas = {
 }
 items = listas.get(st.session_state.seccion, [])
 
-tab1, tab2 = st.tabs(["📝 Cargar", "🛒 Pedido"])
+tab1, tab2 = st.tabs(["📝 Cargar Artículos", "🛒 Revisar Pedido"])
 
 with tab1:
     with st.form("f_carga", clear_on_submit=True):
-        sel = st.selectbox("Artículo:", items)
-        cant = st.text_input("Cantidad:")
+        sel = st.selectbox("Seleccione Artículo:", items)
+        cant = st.text_input("Ingrese Cantidad:")
         mot = st.radio("Motivo:", ["Cambio", "Desgaste", "Perdido"], horizontal=True) if st.session_state.seccion in ["Herramientas", "Indumentaria"] else ""
             
-        if st.form_submit_button("➕ AÑADIR"):
+        if st.form_submit_button("➕ AÑADIR AL CARRITO"):
             if cant.isdigit() and int(cant) > 0:
                 if st.session_state.seccion in ["Insumos_Libreria", "Insumos_Limpieza"]:
                     cod_f, art_f = "S/C", sel
@@ -190,12 +220,12 @@ with tab1:
 
 with tab2:
     if not st.session_state.carrito:
-        st.info("Vacío")
+        st.info("El carrito está vacío actualmente.")
     else:
         # Encabezados de Tabla
         h1, h2, h3 = st.columns([1, 3.5, 1.5])
         h1.markdown("<p class='compact-text'><b>Cant.</b></p>", unsafe_allow_html=True)
-        h2.markdown("<p class='compact-text'><b>Descripción del Artículo</b></p>", unsafe_allow_html=True)
+        h2.markdown("<p class='compact-text'><b>Descripción</b></p>", unsafe_allow_html=True)
         h3.markdown("<p class='compact-text'><b>Acción</b></p>", unsafe_allow_html=True)
         
         for i, item in enumerate(st.session_state.carrito):
@@ -214,6 +244,7 @@ with tab2:
                 df_e = pd.DataFrame(st.session_state.carrito)
                 ex = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
                 conn.update(worksheet=st.session_state.seccion, data=pd.concat([ex, df_e]))
-                st.success("¡Pedido enviado!"); st.session_state.carrito = []; st.session_state.seccion = "Menu"
-                time.sleep(1.5); st.rerun()
+                st.balloons()
+                st.success("¡Pedido enviado con éxito!"); st.session_state.carrito = []; st.session_state.seccion = "Menu"
+                time.sleep(2); st.rerun()
             except Exception as e: st.error(f"Error: {e}")
