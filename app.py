@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import urllib.parse
+from streamlit_gsheets import GSheetsConnection
 
 # Configuración de la página
 st.set_page_config(page_title="Sistema de Pedidos", page_icon="📦")
@@ -51,7 +51,7 @@ with st.form("formulario_pedido"):
     boton_agregar = st.form_submit_button("Agregar al pedido")
     if boton_agregar:
         st.session_state.carrito.append({"Artículo": articulo, "Cantidad": cantidad})
-        st.success(f"✅ ¡{articulo} agregado!")
+        st.success(f"¡{articulo} agregado!")
 
 # --- RESUMEN DEL PEDIDO ---
 st.subheader("🛒 Resumen de tu Pedido")
@@ -67,27 +67,29 @@ if st.session_state.carrito:
             st.rerun()
 
     with col_b:
-        # --- LÓGICA DE WHATSAPP ---
-        # 1. Configura tu número aquí (con código de país, ej: 549 para Argentina)
-        mi_numero = "1121591930" # <--- CAMBIA ESTO POR TU NÚMERO
-        
-        # 2. Construir el texto del mensaje
-        texto = "📦 *NUEVO PEDIDO DE MATERIALES*\n\n"
-        for i, row in df_pedido.iterrows():
-            texto += f"• {row['Artículo']} -> *{row['Cantidad']} unidades*\n"
-        
-        # 3. Codificar para URL
-        texto_codificado = urllib.parse.quote(texto)
-        link_wa = f"https://wa.me/{mi_numero}?text={texto_codificado}"
-        
-        # 4. Botón de envío
-        st.markdown(f"""
-            <a href="{link_wa}" target="_blank" style="text-decoration: none;">
-                <div style="background-color: #25D366; color: white; padding: 10px; text-align: center; border-radius: 5px; font-weight: bold;">
-                    🚀 FINALIZAR Y ENVIAR POR WHATSAPP
-                </div>
-            </a>
-        """, unsafe_allow_html=True)
-
+        if st.button("Finalizar y Enviar Pedido"):
+            try:
+                # Establecer conexión
+                conn = st.connection("gsheets", type=GSheetsConnection)
+                
+                # Leer datos existentes (la pestaña se llama 'Pedidos')
+                # Si está vacía, creamos un DataFrame base
+                try:
+                    existente = conn.read(worksheet="Pedidos", ttl=0)
+                except:
+                    existente = pd.DataFrame(columns=["Artículo", "Cantidad"])
+                
+                # Combinar con el pedido nuevo
+                actualizado = pd.concat([existente, df_pedido], ignore_index=True)
+                
+                # ACTUALIZACIÓN: Escribir en la hoja
+                conn.update(worksheet="Pedidos", data=actualizado)
+                
+                st.balloons()
+                st.success("✅ ¡Pedido enviado a la Hoja de Cálculo!")
+                st.session_state.carrito = []
+            except Exception as e:
+                st.error(f"Error al conectar con Drive: {e}")
+                st.info("Asegúrate de haber configurado los 'Secrets' en Streamlit Cloud.")
 else:
     st.info("El carrito está vacío.")
