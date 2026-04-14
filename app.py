@@ -36,27 +36,21 @@ materiales_disponibles = {
     "012009U Fuente Alimentacion 12V - 1A / Extensor Wifi AIRTIES AIR4960X": 0
 }
 
-# Inicializar el carrito en la sesión del navegador
+# Inicializar el carrito
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
 
 # --- FORMULARIO DE ENTRADA ---
 with st.form("formulario_pedido"):
     col1, col2 = st.columns([2, 1])
-    
     with col1:
         articulo = st.selectbox("Selecciona el artículo:", list(materiales_disponibles.keys()))
-    
     with col2:
         cantidad = st.number_input("Cantidad:", min_value=1, value=1, step=1)
     
     boton_agregar = st.form_submit_button("Agregar al pedido")
-
     if boton_agregar:
-        st.session_state.carrito.append({
-            "Artículo": articulo,
-            "Cantidad": cantidad
-        })
+        st.session_state.carrito.append({"Artículo": articulo, "Cantidad": cantidad})
         st.success(f"¡{articulo} agregado!")
 
 # --- RESUMEN DEL PEDIDO ---
@@ -67,7 +61,6 @@ if st.session_state.carrito:
     st.table(df_pedido)
     
     col_a, col_b = st.columns(2)
-    
     with col_a:
         if st.button("Limpiar Pedido"):
             st.session_state.carrito = []
@@ -76,19 +69,24 @@ if st.session_state.carrito:
     with col_b:
         if st.button("Finalizar y Enviar Pedido"):
             try:
+                # Conexión forzando la pestaña "Pedidos"
                 conn = st.connection("gsheets", type=GSheetsConnection)
-                # Forzar lectura de la hoja 'pedidos'
-                existente = conn.read(worksheet="pedidos", ttl=0)
                 
-                if existente is None or existente.empty:
-                    actualizado = df_pedido
-                else:
-                    actualizado = pd.concat([existente, df_pedido], ignore_index=True)
+                # Intentar leer la hoja "Pedidos"
+                try:
+                    existente = conn.read(worksheet="Pedidos", ttl=0)
+                except:
+                    # Si falla al leer (hoja vacía), creamos un dataframe vacío
+                    existente = pd.DataFrame(columns=["Artículo", "Cantidad"])
                 
-                conn.update(worksheet="pedidos", data=actualizado)
+                # Unir datos
+                actualizado = pd.concat([existente, df_pedido], ignore_index=True)
+                
+                # Guardar cambios
+                conn.update(worksheet="Pedidos", data=actualizado)
                 
                 st.balloons()
-                st.success("✅ ¡Pedido enviado correctamente!")
+                st.success("✅ ¡Pedido enviado! Ya puedes verlo en el Excel.")
                 st.session_state.carrito = [] 
             except Exception as e:
                 st.error(f"Error al enviar: {e}")
