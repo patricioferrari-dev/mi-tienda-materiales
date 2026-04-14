@@ -145,8 +145,36 @@ with tab_resumen:
             with st.spinner("Procesando..."):
                 try:
                     df_nuevo = pd.DataFrame(st.session_state.carrito)
-                    # El nombre de la hoja coincide con la sección (Materiales, Herramientas, Indumentaria)
                     hoja_destino = st.session_state.seccion 
                     
+                    # Intentar leer la hoja correspondiente
                     try:
-                        existente = conn.read(
+                        # Se cierra correctamente el paréntesis de read()
+                        existente = conn.read(worksheet=hoja_destino, ttl=0).dropna(how='all')
+                        act_data = pd.concat([existente, df_nuevo], ignore_index=True)
+                    except Exception:
+                        # Si la hoja está vacía o no existe, el nuevo df es el inicial
+                        act_data = df_nuevo
+                    
+                    # Actualizar la hoja en Google Sheets
+                    conn.update(worksheet=hoja_destino, data=act_data)
+                    
+                    # Lógica de bloqueo solo para Materiales
+                    if st.session_state.seccion == "Materiales":
+                        try:
+                            ex_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+                        except Exception:
+                            ex_auth = pd.DataFrame(columns=["Email", "Estado"])
+                            
+                        nuevo_b = pd.DataFrame([{"Email": st.session_state.email_usuario, "Estado": "Bloqueado"}])
+                        act_auth = pd.concat([ex_auth, nuevo_b], ignore_index=True)
+                        conn.update(worksheet="Autorizaciones", data=act_auth)
+                    
+                    st.success("¡Pedido enviado con éxito!")
+                    st.session_state.carrito = []
+                    time.sleep(2)
+                    st.session_state.seccion = "Menu"
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"Error crítico al guardar: {e}")
