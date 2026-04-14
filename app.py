@@ -87,15 +87,19 @@ if not st.session_state.autenticado:
         st.stop()
 
 # --- 4. LÓGICA DE MENÚ DIFERENCIADO POR DNI ---
-dni_actual = st.session_state.datos_usuario['DNI'].replace(".", "")
+# Forzamos conversión a string y limpiamos posibles decimales (.0) que agrega Excel
+dni_actual = str(st.session_state.datos_usuario.get('DNI', '')).replace(".", "").replace(" ", "")
+if "nan" in dni_actual.lower():
+    dni_actual = ""
 
 if st.session_state.seccion == "Menu":
     st.title("🏢 SGM - Panel de Gestión")
-    st.write(f"Usuario: {st.session_state.datos_usuario['Nombre']}")
+    st.markdown(f"Bienvenido: **{st.session_state.datos_usuario['Nombre']} {st.session_state.datos_usuario['Apellido']}**")
     st.divider()
 
-    # SI ES EL DNI ESPECIAL (Limpieza y Librería)
+    # Comparamos el DNI limpio
     if dni_actual == "1111111":
+        st.info("💡 Panel de Suministros Generales")
         col1, col2 = st.columns(2)
         if col1.button("📚\nInsumos Librería"):
             st.session_state.seccion = "Insumos_Libreria"
@@ -104,12 +108,18 @@ if st.session_state.seccion == "Menu":
             st.session_state.seccion = "Insumos_Limpieza"
             st.rerun()
     
-    # SI ES CUALQUIER OTRO DNI (Materiales, Herramientas, Indumentaria)
     else:
+        # Menú para el resto de los técnicos
         col1, col2, col3 = st.columns(3)
-        if col1.button("📦\nMateriales"): st.session_state.seccion = "Materiales"; st.rerun()
-        if col2.button("🔧\nHerramientas"): st.session_state.seccion = "Herramientas"; st.rerun()
-        if col3.button("👕\nIndumentaria"): st.session_state.seccion = "Indumentaria"; st.rerun()
+        if col1.button("📦\nMateriales"): 
+            st.session_state.seccion = "Materiales"
+            st.rerun()
+        if col2.button("🔧\nHerramientas"): 
+            st.session_state.seccion = "Herramientas"
+            st.rerun()
+        if col3.button("👕\nIndumentaria"): 
+            st.session_state.seccion = "Indumentaria"
+            st.rerun()
     st.stop()
 
 # --- 5. INTERFAZ DE CARGA UNIVERSAL ---
