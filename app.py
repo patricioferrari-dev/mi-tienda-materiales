@@ -131,19 +131,22 @@ if st.session_state.carrito:
                 except Exception:
                     existente = pd.DataFrame(columns=["Tecnico", "Codigo", "Articulo", "Cantidad"])
                 
-                actualizado = pd.concat([existente, df_pedido], ignore_index=True)
-                conn.update(worksheet="Pedidos", data=actualizado)
+                act_pedidos = pd.concat([existente, df_pedido], ignore_index=True)
+                conn.update(worksheet="Pedidos", data=act_pedidos)
                 
                 # 2. Registrar Bloqueo
                 try:
-                    auth_ex = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+                    ex_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
                 except Exception:
-                    auth_ex = pd.DataFrame(columns=["Email", "Estado"])
+                    ex_auth = pd.DataFrame(columns=["Email", "Estado"])
                 
                 nuevo_b = pd.DataFrame([{"Email": st.session_state.email_usuario, "Estado": "Bloqueado"}])
-                auth_final = pd.concat([auth_ex, nuevo_b], ignore_index=True)
-                conn.update(worksheet="Autorizaciones", data=auth_final)
+                act_auth = pd.concat([ex_auth, nuevo_b], ignore_index=True)
+                conn.update(worksheet="Autorizaciones", data=act_auth)
                 
                 st.balloons()
-                st.success("✅ Pedido enviado. Acceso bloqueado.")
-                st
+                st.success("✅ Pedido enviado correctamente.")
+                st.session_state.carrito = []
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error: {e}")
