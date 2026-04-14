@@ -6,9 +6,9 @@ from streamlit_gsheets import GSheetsConnection
 st.set_page_config(page_title="Sistema de Pedidos", page_icon="📦")
 
 st.title("📦 Formulario de Pedidos Online")
-st.write("Selecciona los materiales y la cantidad que necesites.")
+st.write("Selecciona los materiales y la cantidad.")
 
-# 1. Lista de materiales
+# 1. Lista de materiales (tal cual los tienes)
 materiales_disponibles = [
     "13008 CONTROL REMOTO PARA DECO SAGECOM DCWMI303. CON BOT",
     "30032 CABLE COAXIL RG6 QUADSHIELD NEGRO CON PORTANTE",
@@ -36,7 +36,6 @@ materiales_disponibles = [
     "012009U Fuente Alimentacion 12V - 1A / Extensor Wifi AIRTIES AIR4960X"
 ]
 
-# Inicializar el carrito en la sesión
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
 
@@ -44,14 +43,23 @@ if 'carrito' not in st.session_state:
 with st.form("formulario_pedido", clear_on_submit=True):
     col1, col2 = st.columns([2, 1])
     with col1:
-        articulo = st.selectbox("Selecciona el artículo:", materiales_disponibles)
+        seleccion = st.selectbox("Selecciona el artículo:", materiales_disponibles)
     with col2:
         cantidad = st.number_input("Cantidad:", min_value=1, value=1, step=1)
     
-    boton_agregar = st.form_submit_button("Agregar al pedido")
-    if boton_agregar:
-        st.session_state.carrito.append({"Artículo": articulo, "Cantidad": cantidad})
-        st.toast(f"Agregado: {articulo}")
+    if st.form_submit_button("Agregar al pedido"):
+        # SEPARACIÓN MÁGICA:
+        # Tomamos la primera palabra como código y el resto como nombre
+        partes = seleccion.split(" ", 1)
+        codigo_extraido = partes[0]
+        nombre_extraido = partes[1] if len(partes) > 1 else ""
+
+        st.session_state.carrito.append({
+            "Codigo": codigo_extraido,
+            "Articulo": nombre_extraido,
+            "Cantidad": cantidad
+        })
+        st.toast(f"Agregado: {codigo_extraido}")
 
 # --- RESUMEN DEL PEDIDO ---
 st.subheader("🛒 Resumen de tu Pedido")
@@ -69,39 +77,25 @@ if st.session_state.carrito:
     with col_b:
         if st.button("Finalizar y Enviar Pedido"):
             try:
-                # Establecer conexión con Google Sheets
                 conn = st.connection("gsheets", type=GSheetsConnection)
                 
-                # Intentar leer la pestaña 'Pedidos'
                 try:
-                    # ttl=0 asegura que traiga los datos más recientes y no una copia guardada
                     existente = conn.read(worksheet="Pedidos", ttl=0)
-                    # Limpiamos filas vacías si las hubiera
                     existente = existente.dropna(how='all')
-                except Exception:
-                    # Si la hoja no existe o hay error, empezamos de cero
-                    existente = pd.DataFrame(columns=["Artículo", "Cantidad"])
+                except:
+                    existente = pd.DataFrame(columns=["Codigo", "Articulo", "Cantidad"])
                 
-                # Unir el pedido actual con lo que ya estaba en el Excel
-                # Si 'existente' está vacío, usamos solo df_pedido
-                if existente.empty:
-                    actualizado = df_pedido
-                else:
-                    actualizado = pd.concat([existente, df_pedido], ignore_index=True)
+                # Unir datos nuevos
+                actualizado = pd.concat([existente, df_pedido], ignore_index=True)
                 
-                # Enviar los datos de vuelta a Google Sheets
+                # Enviar a Google Sheets
                 conn.update(worksheet="Pedidos", data=actualizado)
                 
                 st.balloons()
-                st.success("✅ ¡Pedido enviado correctamente a la Hoja de Cálculo!")
-                
-                # Vaciar el carrito después del éxito
+                st.success("✅ ¡Pedido enviado con 3 columnas!")
                 st.session_state.carrito = []
-                # Pequeña pausa para ver el mensaje antes de recargar
-                st.info("La lista se limpiará automáticamente...")
                 
             except Exception as e:
-                st.error(f"Error crítico: {e}")
-                st.info("Revisa que el email de la Service Account sea 'Editor' en tu Excel.")
+                st.error(f"Error: {e}")
 else:
-    st.info("El carrito está vacío. Agrega materiales arriba.")
+    st.info("El carrito está vacío.")
