@@ -1,94 +1,96 @@
 import streamlit as st
-import pandas as pd  # <--- Corregido aquí
+import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
 import time
 
 # 1. CONFIGURACIÓN DE PÁGINA
-st.set_page_config(page_title="SGM - Gestión Integral", page_icon="🏢", layout="centered")
+st.set_page_config(page_title="SGM - Gestión Integral", page_icon="🏢", layout="wide")
 
-# 2. CSS AVANZADO: Diseño de Tarjetas (Cards) y Grilla Técnica
+# 2. CSS DE ALTO NIVEL: Centrado, Sombras Suaves y Botones Modernos
 st.markdown("""
     <style>
-    /* Fondo general de la app */
+    /* Fondo con degradado sutil */
     .stApp {
-        background-color: #f0f2f6;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
     }
     
-    /* Contenedor principal tipo Tarjeta */
-    [data-testid="stVerticalBlock"] > div:has(div.stButton) {
-        background-color: #ffffff;
-        padding: 2rem;
-        border-radius: 15px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        border: 1px solid #e1e4e8;
-        margin-bottom: 1rem;
+    /* Centrado del contenedor principal */
+    .block-container {
+        max-width: 800px;
+        padding-top: 5rem;
+        padding-bottom: 5rem;
     }
 
-    /* Botones del menú principal */
+    /* Tarjeta Principal (Glassmorphism) */
+    [data-testid="stVerticalBlock"] > div:has(div.stButton) {
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(10px);
+        padding: 3rem;
+        border-radius: 24px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        text-align: center;
+    }
+
+    /* Títulos y Subtítulos */
+    h1 {
+        color: #1e293b;
+        font-weight: 800 !important;
+        letter-spacing: -1px;
+    }
+    
+    .stSubheader p {
+        color: #64748b !important;
+        font-weight: 500;
+    }
+
+    /* Botones del Menú Principal */
     .stButton>button {
         width: 100%;
-        border-radius: 12px;
-        font-weight: bold;
-        height: 4em;
+        border-radius: 16px;
+        font-weight: 700;
+        height: 5em;
         background-color: #ffffff;
-        border: 1px solid #d1d5db;
-        transition: all 0.3s ease;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        color: #334155;
+        border: 1px solid #e2e8f0;
+        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+        font-size: 1.1rem;
     }
     
     .stButton>button:hover {
-        border-color: #4CAF50;
-        color: #4CAF50;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        border-color: #3b82f6;
+        color: #3b82f6;
+        transform: translateY(-5px);
+        box-shadow: 0 12px 20px rgba(59, 130, 246, 0.15);
     }
 
-    /* Estilo de Celdas para la Tabla de Pedidos */
-    [data-testid="stHorizontalBlock"] {
-        gap: 0px !important;
-        margin-bottom: -1px !important;
-    }
-
+    /* Tabla de Pedidos tipo Grid */
     div[data-testid="stColumn"] {
-        border: 1px solid #dee2e6 !important;
-        padding: 12px !important;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        border: 1px solid #e2e8f0 !important;
+        padding: 15px !important;
         background-color: #ffffff;
+        border-radius: 4px;
     }
 
-    div[data-testid="stColumn"]:nth-of-type(2) {
-        justify-content: flex-start !important;
-    }
-
-    /* Botón Eliminar Estilizado (Solo texto con borde) */
+    /* Botón Eliminar Minimalista */
     div[data-testid="stColumn"] button {
-        background-color: transparent !important;
-        color: #dc3545 !important;
-        border: 1px solid #dc3545 !important;
-        height: 28px !important;
-        width: auto !important;
-        padding: 0px 12px !important;
-        font-size: 11px !important;
-        text-transform: uppercase;
-        font-weight: bold !important;
-        border-radius: 6px !important;
+        background-color: #fff1f2 !important;
+        color: #e11d48 !important;
+        border: 1px solid #fecdd3 !important;
+        height: 32px !important;
+        border-radius: 8px !important;
+        font-size: 12px !important;
+        font-weight: 600 !important;
     }
     
     div[data-testid="stColumn"] button:hover {
-        background-color: #dc3545 !important;
+        background-color: #e11d48 !important;
         color: white !important;
     }
 
-    .compact-text {
-        font-size: 14px !important;
-        margin: 0px !important;
-        color: #333;
-    }
-
-    /* Ocultar elementos innecesarios */
+    /* Ocultar elementos de Streamlit */
     #MainMenu, footer, header {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
@@ -119,7 +121,7 @@ def validar_email():
         st.error("⚠️ Error en configuración de Secrets.")
 
 if not st.session_state.autenticado:
-    st.title("🔐 Acceso al Sistema")
+    st.title("🔐 Acceso")
     if 'email_usuario' not in st.session_state:
         st.text_input("Correo Electrónico:", key="email_input", on_change=validar_email)
         st.stop()
@@ -136,7 +138,7 @@ if not st.session_state.autenticado:
             ape = col2.text_input("Apellido:")
             cel = col1.text_input("Celular:")
             pwd = st.text_input("Contraseña:", type="password")
-            if st.form_submit_button("Registrar"):
+            if st.form_submit_button("Finalizar Registro"):
                 dni_l = dni_in.replace(".","").strip()
                 df_p = conn.read(worksheet="Padron_DNI", ttl=0)
                 lista_dnis = df_p['DNI'].astype(str).str.replace(".0", "", regex=False).str.replace(".", "", regex=False).tolist()
@@ -144,13 +146,14 @@ if not st.session_state.autenticado:
                     dni_f = "{:,}".format(int(dni_l)).replace(",", ".")
                     nuevo = pd.DataFrame([{"Email":st.session_state.email_usuario, "Nombre":nom.title(), "Apellido":ape.title(), "Celular":cel, "DNI":dni_f, "Contrasena":pwd}])
                     conn.update(worksheet="DB_Tecnicos", data=pd.concat([df_db, nuevo]))
-                    st.success("Registrado correctamente."); time.sleep(1); st.rerun()
-                else: st.error("DNI no autorizado.")
+                    st.success("¡Registro exitoso!"); time.sleep(1); st.rerun()
+                else: st.error("DNI no habilitado.")
         st.stop()
     else:
         datos = user_row.iloc[0]
-        p_in = st.text_input(f"Hola {datos['Nombre']}, ingresa tu contraseña:", type="password")
-        if st.button("Ingresar"):
+        st.subheader(f"Hola, {datos['Nombre']}")
+        p_in = st.text_input("Ingresa tu contraseña:", type="password")
+        if st.button("Entrar"):
             if str(p_in) == str(datos['Contrasena']):
                 st.session_state.autenticado = True
                 st.session_state.datos_usuario = datos.to_dict()
@@ -165,23 +168,26 @@ dni_actual = raw_dni.split(".")[0].replace(" ", "").replace(".", "")
 if st.session_state.seccion == "Menu":
     st.session_state.carrito = [] 
     st.title("🏢 Panel de Control")
-    st.subheader(f"Bienvenido, {st.session_state.datos_usuario['Nombre']}")
-    st.divider()
+    st.subheader(f"Bienvenido al sistema de gestión")
+    st.write("---")
 
     if dni_actual == "1111111":
         col1, col2 = st.columns(2)
-        if col1.button("📚\nInsumos Librería"): st.session_state.seccion = "Insumos_Libreria"; st.rerun()
-        if col2.button("🧼\nInsumos Limpieza"): st.session_state.seccion = "Insumos_Limpieza"; st.rerun()
+        if col1.button("📚\nINSUMOS LIBRERÍA"): st.session_state.seccion = "Insumos_Libreria"; st.rerun()
+        if col2.button("🧼\nINSUMOS LIMPIEZA"): st.session_state.seccion = "Insumos_Limpieza"; st.rerun()
     else:
         col1, col2, col3 = st.columns(3)
-        if col1.button("📦\nMateriales"): st.session_state.seccion = "Materiales"; st.rerun()
-        if col2.button("🔧\nHerramientas"): st.session_state.seccion = "Herramientas"; st.rerun()
-        if col3.button("👕\nIndumentaria"): st.session_state.seccion = "Indumentaria"; st.rerun()
+        if col1.button("📦\nMATERIALES"): st.session_state.seccion = "Materiales"; st.rerun()
+        if col2.button("🔧\nHERRAMIENTAS"): st.session_state.seccion = "Herramientas"; st.rerun()
+        if col3.button("👕\nINDUMENTARIA"): st.session_state.seccion = "Indumentaria"; st.rerun()
     st.stop()
 
 # 7. INTERFAZ DE CARGA
-st.button("⬅️ Volver al Menú Principal", on_click=lambda: setattr(st.session_state, 'seccion', 'Menu'))
-st.title(f"{st.session_state.seccion.replace('_', ' ')}")
+col_back, col_title = st.columns([1, 4])
+with col_back:
+    if st.button("⬅️"): st.session_state.seccion = "Menu"; st.rerun()
+with col_title:
+    st.title(st.session_state.seccion.replace('_', ' '))
 
 listas = {
     "Materiales": ["13008 CONTROL", "30032 CABLE", "31025 PRECINTO"],
@@ -192,7 +198,7 @@ listas = {
 }
 items = listas.get(st.session_state.seccion, [])
 
-tab1, tab2 = st.tabs(["📝 Cargar Artículos", "🛒 Revisar Pedido"])
+tab1, tab2 = st.tabs(["📝 CARGAR ARTÍCULOS", "🛒 REVISAR PEDIDO"])
 
 with tab1:
     with st.form("f_carga", clear_on_submit=True):
@@ -219,31 +225,30 @@ with tab1:
 
 with tab2:
     if not st.session_state.carrito:
-        st.info("El carrito está vacío actualmente.")
+        st.info("No has añadido artículos todavía.")
     else:
-        # Encabezados de Tabla
+        # Encabezados
         h1, h2, h3 = st.columns([1, 3.5, 1.5])
-        h1.markdown("<p class='compact-text'><b>Cant.</b></p>", unsafe_allow_html=True)
-        h2.markdown("<p class='compact-text'><b>Descripción</b></p>", unsafe_allow_html=True)
-        h3.markdown("<p class='compact-text'><b>Acción</b></p>", unsafe_allow_html=True)
+        h1.markdown("**Cant.**")
+        h2.markdown("**Descripción**")
+        h3.markdown("**Acción**")
         
         for i, item in enumerate(st.session_state.carrito):
             row_c1, row_c2, row_c3 = st.columns([1, 3.5, 1.5])
-            row_c1.markdown(f"<p class='compact-text'>{item['Cantidad']}</p>", unsafe_allow_html=True)
+            row_c1.write(f"{item['Cantidad']}")
             desc = f"[{item['Codigo']}] {item['Articulo']}" if item['Codigo'] != "S/C" else item['Articulo']
-            row_c2.markdown(f"<p class='compact-text'>{desc}</p>", unsafe_allow_html=True)
-            
+            row_c2.write(desc)
             if row_c3.button("Eliminar", key=f"del_{i}"):
                 st.session_state.carrito.pop(i)
                 st.rerun()
 
-        st.write("")
+        st.write("---")
         if st.button("🚀 ENVIAR PEDIDO FINAL"):
             try:
                 df_e = pd.DataFrame(st.session_state.carrito)
                 ex = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
                 conn.update(worksheet=st.session_state.seccion, data=pd.concat([ex, df_e]))
                 st.balloons()
-                st.success("¡Pedido enviado con éxito!"); st.session_state.carrito = []; st.session_state.seccion = "Menu"
-                time.sleep(2); st.rerun()
+                st.success("¡Pedido enviado!"); st.session_state.carrito = []; st.session_state.seccion = "Menu"
+                time.sleep(1.5); st.rerun()
             except Exception as e: st.error(f"Error: {e}")
