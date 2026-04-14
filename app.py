@@ -40,71 +40,67 @@ if 'carrito' not in st.session_state: st.session_state.carrito = []
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 5. LOGIN, REGISTRO Y REESTABLECIMIENTO
+# 5. LOGIN, REGISTRO (CON PADRÓN) Y REESTABLECIMIENTO
 if not st.session_state.autenticado:
-    # --- MODO REESTABLECER CONTRASEÑA ---
+    
+    # --- MODO REESTABLECER ---
     if st.session_state.reestablecer:
-        st.title("🔑 Reestablecer Contraseña")
-        st.info(f"Usuario detectado: {st.session_state.user_a_reestablecer['Nombre']}. Ingresa tu nueva contraseña.")
+        st.title("🔑 Asignar Contraseña")
+        st.info(f"Usuario: {st.session_state.user_a_reestablecer['Nombre']} {st.session_state.user_a_reestablecer['Apellido']}. Define tu acceso.")
         with st.form("form_reset"):
+            n_mail_upd = st.text_input("Confirmar/Asignar Email:").strip().lower()
             nueva_p = st.text_input("Nueva Contraseña:", type="password")
             confirm_p = st.text_input("Confirmar Contraseña:", type="password")
-            if st.form_submit_button("GUARDAR CONTRASEÑA"):
-                if nueva_p == confirm_p and len(nueva_p) > 0:
+            if st.form_submit_button("GUARDAR DATOS"):
+                if nueva_p == confirm_p and len(nueva_p) > 0 and n_mail_upd:
                     df_db = conn.read(worksheet="DB_Tecnicos", ttl=0)
-                    # Buscamos por DNI que es único
                     idx = df_db.index[df_db['DNI'].astype(str) == str(st.session_state.user_a_reestablecer['DNI'])].tolist()[0]
                     df_db.at[idx, 'Contrasena'] = nueva_p
+                    df_db.at[idx, 'Email'] = n_mail_upd
                     conn.update(worksheet="DB_Tecnicos", data=df_db)
-                    st.success("Contraseña actualizada. Ya puedes ingresar.")
+                    st.success("Datos actualizados. Ya puedes ingresar.")
                     st.session_state.reestablecer = False
-                    time.sleep(2)
+                    time.sleep(2); st.rerun()
+                else: st.error("Revisa los datos ingresados.")
+        if st.button("Cancelar"): st.session_state.reestablecer = False; st.rerun()
+
+    # --- MODO REGISTRO (SOLO SI ESTÁ EN PADRÓN) ---
+    elif st.session_state.modo_registro:
+        st.title("📝 Registro por Padrón")
+        st.write("Ingresa tu DNI para verificar si estás habilitado.")
+        with st.form("form_padron"):
+            check_dni = st.text_input("DNI (Solo números):").strip()
+            if st.form_submit_button("VERIFICAR DNI"):
+                df_db = conn.read(worksheet="DB_Tecnicos", ttl=0)
+                # Buscamos el DNI en la base
+                user_match = df_db[df_db['DNI'].astype(str) == check_dni]
+                
+                if not user_match.empty:
+                    # Si el DNI existe pero no tiene contraseña, mandamos a reestablecer (asignar pass)
+                    st.session_state.user_a_reestablecer = user_match.iloc[0].to_dict()
+                    st.session_state.reestablecer = True
+                    st.session_state.modo_registro = False
                     st.rerun()
                 else:
-                    st.error("Las contraseñas no coinciden o están vacías.")
-        if st.button("Cancelar"): 
-            st.session_state.reestablecer = False
-            st.rerun()
-
-    # --- MODO REGISTRO ---
-    elif st.session_state.modo_registro:
-        st.title("📝 Registro de Usuario")
-        with st.form("form_reg"):
-            n_email = st.text_input("Email:").strip().lower()
-            n_nom = st.text_input("Nombre:")
-            n_ape = st.text_input("Apellido:")
-            n_dni = st.text_input("DNI:")
-            n_cel = st.text_input("Celular:")
-            n_pas = st.text_input("Contraseña:", type="password")
-            if st.form_submit_button("REGISTRARME"):
-                df_check = conn.read(worksheet="DB_Tecnicos", ttl=0)
-                if n_dni in df_check['DNI'].astype(str).values:
-                    st.error("DNI ya registrado.")
-                else:
-                    nuevo = pd.DataFrame([{"Email": n_email, "Nombre": n_nom, "Apellido": n_ape, "Celular": n_cel, "DNI": n_dni, "Contrasena": n_pas}])
-                    conn.update(worksheet="DB_Tecnicos", data=pd.concat([df_check, nuevo], ignore_index=True))
-                    st.success("Registrado."); st.session_state.modo_registro = False; time.sleep(1); st.rerun()
+                    st.error("🚫 El DNI ingresado no figura en el padrón habilitado. Contacte al administrador.")
         if st.button("⬅️ Volver"): st.session_state.modo_registro = False; st.rerun()
 
     # --- MODO LOGIN ---
     else:
         st.title("🔐 Acceso SGM")
-        u_mail = st.text_input("Email:").strip().lower()
+        u_mail = st.text_input("Email o DNI:").strip().lower()
         u_pass = st.text_input("Contraseña:", type="password").strip()
         c1, c2 = st.columns(2)
         
         if c1.button("Ingresar", use_container_width=True):
             db = conn.read(worksheet="DB_Tecnicos", ttl=0)
-            db['Email'] = db['Email'].astype(str).str.strip().str.lower()
-            
-            # Buscamos el usuario por Mail
-            user_data = db[db['Email'] == u_mail]
+            # Buscamos por Email o por DNI
+            user_data = db[(db['Email'].astype(str).str.lower() == u_mail) | (db['DNI'].astype(str) == u_mail)]
             
             if not user_data.empty:
-                # Verificamos si la contraseña en Excel está vacía o es NaN
-                pass_excel = str(user_data.iloc[0].get('Contrasena', '')).strip().lower()
-                
-                if pass_excel in ["", "nan", "none"]:
+                pass_excel = str(user_data.iloc[0].get('Contrasena', '')).strip()
+                # Si no tiene contraseña o es nula, forzar asignación
+                if pass_excel.lower() in ["", "nan", "none"]:
                     st.session_state.user_a_reestablecer = user_data.iloc[0].to_dict()
                     st.session_state.reestablecer = True
                     st.rerun()
@@ -112,12 +108,10 @@ if not st.session_state.autenticado:
                     st.session_state.autenticado = True
                     st.session_state.datos_usuario = user_data.iloc[0].to_dict()
                     st.rerun()
-                else:
-                    st.error("Contraseña incorrecta.")
-            else:
-                st.error("Usuario no encontrado.")
+                else: st.error("Contraseña incorrecta.")
+            else: st.error("Usuario no encontrado en el padrón.")
                 
-        if c2.button("Registrarse", use_container_width=True): 
+        if c2.button("Registrarme", use_container_width=True): 
             st.session_state.modo_registro = True
             st.rerun()
     st.stop()
