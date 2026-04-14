@@ -21,7 +21,7 @@ def check_login():
         else:
             st.error("🚫 Correo no autorizado.")
     except:
-        st.error("⚠️ Error en Configuración (Secrets).")
+        st.error("⚠️ Error: Configura los correos en los Secrets de Streamlit.")
 
 if not st.session_state.autenticado:
     st.title("🔐 Acceso")
@@ -36,19 +36,19 @@ try:
     df_auth = conn.read(worksheet="Autorizaciones", ttl=0)
     if st.session_state.email_usuario in df_auth[df_auth['Estado'] == 'Bloqueado']['Email'].values:
         st.title("🚫 Acceso Restringido")
-        st.warning(f"Hola {st.session_state.email_usuario}, ya registraste un pedido hoy.")
-        st.info("Espera a que el administrador te autorice nuevamente.")
+        st.warning(f"Hola {st.session_state.email_usuario}, ya registraste un pedido.")
+        st.info("Tu acceso está bloqueado hasta que el administrador te autorice nuevamente.")
         st.stop()
 except:
     pass
 
-# --- DISEÑO DEL FORMULARIO (ESTILO ANTERIOR) ---
+# --- DISEÑO DEL FORMULARIO ---
 st.title("📦 Formulario de Pedidos")
 st.success(f"👷 Técnico: **{st.session_state.email_usuario}**")
 
 materiales_disponibles = [
     "13008 CONTROL REMOTO PARA DECO SAGECOM DCWMI303. CON BOT",
-    "30032 CABLE COAXIL RG6 QUADSHIELD NEGRO CON PORTANTE",
+    "30032 CABLE COAXIL RG6 QUADSHIELD NEGRO con PORTANTE",
     "31025 PRECINTO PLÁSTICO NEGRO (150 X 5.5 MM) , CON PROTE",
     "31026 TARUGO DE 8MM PARA LADRILLO HUECO",
     "31027 PITON CON TOPE PARA TARUGO DE 8MM",
@@ -76,13 +76,11 @@ materiales_disponibles = [
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
 
-# Volvemos al formulario integrado que tanto te gustaba
 with st.form("formulario_pedido", clear_on_submit=True):
     col1, col2 = st.columns([2, 1])
     with col1:
         seleccion = st.selectbox("Artículo:", materiales_disponibles)
     with col2:
-        # Usamos text_input para que puedan borrar rápido sin el bug del "0"
         cantidad_str = st.text_input("Cantidad:", placeholder="0")
     
     boton_agregar = st.form_submit_button("➕ Agregar al pedido")
@@ -102,7 +100,7 @@ with st.form("formulario_pedido", clear_on_submit=True):
             else:
                 st.error("Mínimo 1")
         except ValueError:
-            st.error("Escribe un número")
+            st.error("Escribe un número válido")
 
 # --- RESUMEN Y ENVÍO ---
 if st.session_state.carrito:
@@ -125,4 +123,20 @@ if st.session_state.carrito:
                     existente = pd.DataFrame(columns=["Tecnico", "Codigo", "Articulo", "Cantidad"])
                 
                 actualizado = pd.concat([existente, df_pedido], ignore_index=True)
-                conn.update(worksheet="Pedidos", data=actualizado
+                conn.update(worksheet="Pedidos", data=actualizado)
+                
+                # 2. Registrar Bloqueo
+                try:
+                    auth_ex = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+                except:
+                    auth_ex = pd.DataFrame(columns=["Email", "Estado"])
+                
+                nuevo_b = pd.DataFrame([{"Email": st.session_state.email_usuario, "Estado": "Bloqueado"}])
+                auth_act = pd.concat([auth_ex, nuevo_b], ignore_index=True)
+                conn.update(worksheet="Autorizaciones", data=auth_act)
+                
+                st.balloons()
+                st.success("✅ Pedido enviado. Acceso bloqueado hasta nueva autorización.")
+                st.session_state.carrito = []
+                st.rerun()
+            except Exception as e:
