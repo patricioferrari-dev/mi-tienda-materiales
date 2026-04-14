@@ -76,10 +76,21 @@ if st.session_state.carrito:
     with col_b:
         if st.button("Finalizar y Enviar Pedido"):
             try:
-                # Conectar indicando que la hoja se llama "pedidos"
                 conn = st.connection("gsheets", type=GSheetsConnection)
-                
-                # Leer la pestaña específica
+                # Forzar lectura de la hoja 'pedidos'
                 existente = conn.read(worksheet="pedidos", ttl=0)
                 
-                #
+                if existente is None or existente.empty:
+                    actualizado = df_pedido
+                else:
+                    actualizado = pd.concat([existente, df_pedido], ignore_index=True)
+                
+                conn.update(worksheet="pedidos", data=actualizado)
+                
+                st.balloons()
+                st.success("✅ ¡Pedido enviado correctamente!")
+                st.session_state.carrito = [] 
+            except Exception as e:
+                st.error(f"Error al enviar: {e}")
+else:
+    st.info("El carrito está vacío.")
