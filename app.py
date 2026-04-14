@@ -97,21 +97,37 @@ if not st.session_state.autenticado:
             st.rerun()
     st.stop()
 
-# 5. MENÚ
-dni_val = str(st.session_state.datos_usuario.get('DNI', '')).split(".")[0]
+# 5. MENÚ PRINCIPAL
+dni_raw = str(st.session_state.datos_usuario.get('DNI', ''))
+dni_val = dni_raw.split(".")[0].replace(" ", "").replace(".", "")
 
 if st.session_state.seccion == "Menu":
-    st.subheader(f"Bienvenido, {st.session_state.datos_usuario['Nombre']}")
-    st.write("Seleccione categoría:")
-    
-    c1, c2, c3 = st.columns(3)
+    st.title("🏢 Panel de Gestión")
+    st.write(f"Operador: **{st.session_state.datos_usuario['Nombre']}**")
+    st.divider()
+
+    # LÓGICA DE COLUMNAS DINÁMICA
     if dni_val == "1111111":
-        if c1.button("📚 LIBRERÍA"): st.session_state.seccion = "Insumos_Libreria"; st.rerun()
-        if c2.button("🧼 LIMPIEZA"): st.session_state.seccion = "Insumos_Limpieza"; st.rerun()
+        # Solo 2 columnas para que no quede el hueco a la derecha
+        c1, c2 = st.columns(2)
+        if c1.button("📚\nLIBRERÍA"): 
+            st.session_state.seccion = "Insumos_Libreria"
+            st.rerun()
+        if c2.button("🧼\nLIMPIEZA"): 
+            st.session_state.seccion = "Insumos_Limpieza"
+            st.rerun()
     else:
-        if c1.button("📦 MATERIALES"): st.session_state.seccion = "Materiales"; st.rerun()
-        if c2.button("🔧 HERRAMIENTAS"): st.session_state.seccion = "Herramientas"; st.rerun()
-        if c3.button("👕 INDUMENTARIA"): st.session_state.seccion = "Indumentaria"; st.rerun()
+        # 3 columnas para el resto de los técnicos
+        c1, c2, c3 = st.columns(3)
+        if c1.button("📦\nMATERIALES"): 
+            st.session_state.seccion = "Materiales"
+            st.rerun()
+        if c2.button("🔧\nHERRAMIENTAS"): 
+            st.session_state.seccion = "Herramientas"
+            st.rerun()
+        if c3.button("👕\nINDUMENTARIA"): 
+            st.session_state.seccion = "Indumentaria"
+            st.rerun()
     st.stop()
 
 # 6. PANEL COMPACTO
