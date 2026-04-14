@@ -130,7 +130,6 @@ with tab_carga:
                         "Cantidad": cantidad_num
                     })
                     st.toast(f"Añadido: {partes[0]}", icon="✅")
-                    # Un pequeño delay antes del rerun mejora la animación del toast
                     time.sleep(0.5)
                     st.rerun()
                 else:
@@ -148,5 +147,42 @@ with tab_resumen:
             col_txt, col_cant, col_del = st.columns([3, 1, 0.5])
             col_txt.write(f"**{item['Codigo']}** - {item['Articulo']}")
             col_cant.write(f"Cant: {item['Cantidad']}")
+            # FIX: Corregido el cierre de paréntesis aquí
             if col_del.button("❌", key=f"del_{i}"):
-                st.session_state.carrito.pop(
+                st.session_state.carrito.pop(i)
+                st.rerun()
+        
+        st.divider()
+        
+        if st.button("🚀 CONFIRMAR Y ENVIAR TODO"):
+            with st.spinner("Guardando en el servidor..."):
+                try:
+                    df_final = pd.DataFrame(st.session_state.carrito)
+                    
+                    # 1. Guardar Pedidos
+                    try:
+                        existente = conn.read(worksheet="Pedidos", ttl=0).dropna(how='all')
+                    except:
+                        existente = pd.DataFrame(columns=["Tecnico", "Codigo", "Articulo", "Cantidad"])
+                    
+                    act_pedidos = pd.concat([existente, df_final], ignore_index=True)
+                    conn.update(worksheet="Pedidos", data=act_pedidos)
+                    
+                    # 2. Registrar Bloqueo
+                    try:
+                        ex_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+                    except:
+                        ex_auth = pd.DataFrame(columns=["Email", "Estado"])
+                    
+                    nuevo_b = pd.DataFrame([{"Email": st.session_state.email_usuario, "Estado": "Bloqueado"}])
+                    act_auth = pd.concat([ex_auth, nuevo_b], ignore_index=True)
+                    conn.update(worksheet="Autorizaciones", data=act_auth)
+                    
+                    st.balloons()
+                    st.success("✅ Pedido enviado con éxito.")
+                    st.session_state.carrito = []
+                    time.sleep(2)
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"Error crítico de conexión: {e}")
