@@ -5,77 +5,74 @@ from datetime import datetime
 import time
 
 # 1. CONFIGURACIÓN DE PÁGINA
-st.set_page_config(page_title="SGM - Gestión Integral", page_icon="🏢", layout="wide")
+st.set_page_config(page_title="SGM", page_icon="🏢", layout="wide")
 
-# 2. CSS QUIRÚRGICO: ESTILO PLANILLA COMPACTA
+# 2. CSS PARA ELIMINAR ESPACIOS Y MARGENES EXCESIVOS
 st.markdown("""
     <style>
-    .stApp { background-color: #f0f2f5; }
-    .block-container { max-width: 900px; padding-top: 2rem; }
+    /* 1. Fondo y Contenedor */
+    .stApp { background-color: #f1f5f9; }
+    .block-container { max-width: 850px; padding-top: 1.5rem !important; }
 
-    /* Contenedor blanco tipo hoja */
-    [data-testid="stVerticalBlock"] > div:has(div.stButton) {
-        background: white;
-        padding: 1rem;
-        border-radius: 8px;
-        border: 1px solid #d1d5db;
-    }
-
-    /* FILAS DE TABLA: Sin separación y altura mínima */
+    /* 2. Eliminar márgenes entre columnas de Streamlit */
     [data-testid="stHorizontalBlock"] {
         gap: 0px !important;
-        margin-top: -1px !important; /* Une bordes superiores e inferiores */
+        margin-bottom: -1px !important;
     }
 
-    /* CELDAS: Bordes finos y alineación perfecta */
+    /* 3. Celdas estilo Excel: Bordes rectos y padding mínimo */
     div[data-testid="stColumn"] {
-        border: 1px solid #ccc !important;
-        padding: 2px 8px !important; /* Espacio mínimo interno */
-        min-height: 28px !important;
+        border: 1px solid #cbd5e1 !important;
+        padding: 2px 8px !important;
+        background-color: white;
+        min-height: 30px !important;
         display: flex;
         align-items: center;
-        background-color: white;
     }
 
-    /* Encabezados con color de oficina */
-    .table-header {
-        background-color: #e5e7eb !important;
+    /* 4. Encabezados compactos */
+    .header-box {
+        background-color: #64748b !important;
+        color: white !important;
         font-weight: bold;
-        font-size: 13px;
-        color: #374151;
+        font-size: 12px;
         width: 100%;
         text-align: center;
+        text-transform: uppercase;
     }
 
-    /* Texto de celda pequeño y profesional */
+    /* 5. Datos de la celda */
     .cell-data {
         font-size: 13px;
-        color: #111827;
+        color: #1e293b;
         margin: 0;
+        white-space: nowrap;
     }
 
-    /* BOTÓN X: Minimalista total */
+    /* 6. Botón X Minimalista (Sin recuadro) */
     div[data-testid="stColumn"] button {
         background-color: transparent !important;
         color: #ef4444 !important;
         border: none !important;
         font-size: 14px !important;
         font-weight: bold !important;
-        height: 20px !important;
+        height: 24px !important;
         width: 100% !important;
         padding: 0 !important;
-        margin: 0 !important;
         box-shadow: none !important;
     }
-    
     div[data-testid="stColumn"] button:hover {
         background-color: #fee2e2 !important;
-        border-radius: 0px;
     }
 
-    /* Ocultar basurita de Streamlit */
+    /* 7. Quitar bordes de las pestañas (Tabs) */
+    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+    .stTabs [data-baseweb="tab"] { 
+        padding: 5px 15px !important; 
+        font-size: 13px !important;
+    }
+
     #MainMenu, footer, header {visibility: hidden;}
-    [data-testid="stFormSubmitButton"] { text-align: center; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -86,44 +83,40 @@ if 'carrito' not in st.session_state: st.session_state.carrito = []
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 4. ACCESO
+# 4. ACCESO (Lógica simplificada para el ejemplo)
 if not st.session_state.autenticado:
-    st.title("🔐 Acceso")
-    with st.container():
-        user_mail = st.text_input("Usuario (Email):")
-        user_pass = st.text_input("Contraseña:", type="password")
-        if st.button("Ingresar"):
-            df_db = conn.read(worksheet="DB_Tecnicos", ttl=0)
-            valid = df_db[(df_db['Email'].str.lower() == user_mail.lower()) & (df_db['Contrasena'].astype(str) == user_pass)]
-            if not valid.empty:
-                st.session_state.autenticado = True
-                st.session_state.datos_usuario = valid.iloc[0].to_dict()
-                st.rerun()
-            else: st.error("Datos incorrectos")
+    st.title("🏢 Sistema SGM")
+    user = st.text_input("Usuario:")
+    pw = st.text_input("Contraseña:", type="password")
+    if st.button("Ingresar"):
+        df_db = conn.read(worksheet="DB_Tecnicos", ttl=0)
+        valid = df_db[(df_db['Email'].str.lower() == user.lower()) & (df_db['Contrasena'].astype(str) == pw)]
+        if not valid.empty:
+            st.session_state.autenticado = True
+            st.session_state.datos_usuario = valid.iloc[0].to_dict()
+            st.rerun()
     st.stop()
 
-# 5. MENÚ PRINCIPAL (Botones grandes para dedos, pero en contenedor limpio)
-dni_raw = str(st.session_state.datos_usuario.get('DNI', ''))
-dni_val = dni_raw.split(".")[0].replace(" ", "")
+# 5. MENÚ
+dni_val = str(st.session_state.datos_usuario.get('DNI', '')).split(".")[0]
 
 if st.session_state.seccion == "Menu":
-    st.title("🏢 Panel de Gestión")
-    st.write(f"Operador: **{st.session_state.datos_usuario['Nombre']}**")
-    st.divider()
-
+    st.subheader(f"Bienvenido, {st.session_state.datos_usuario['Nombre']}")
+    st.write("Seleccione categoría:")
+    
     c1, c2, c3 = st.columns(3)
     if dni_val == "1111111":
-        if c1.button("📚\nLIBRERÍA"): st.session_state.seccion = "Insumos_Libreria"; st.rerun()
-        if c2.button("🧼\nLIMPIEZA"): st.session_state.seccion = "Insumos_Limpieza"; st.rerun()
+        if c1.button("📚 LIBRERÍA"): st.session_state.seccion = "Insumos_Libreria"; st.rerun()
+        if c2.button("🧼 LIMPIEZA"): st.session_state.seccion = "Insumos_Limpieza"; st.rerun()
     else:
-        if c1.button("📦\nMATERIALES"): st.session_state.seccion = "Materiales"; st.rerun()
-        if c2.button("🔧\nHERRAMIENTAS"): st.session_state.seccion = "Herramientas"; st.rerun()
-        if c3.button("👕\nINDUMENTARIA"): st.session_state.seccion = "Indumentaria"; st.rerun()
+        if c1.button("📦 MATERIALES"): st.session_state.seccion = "Materiales"; st.rerun()
+        if c2.button("🔧 HERRAMIENTAS"): st.session_state.seccion = "Herramientas"; st.rerun()
+        if c3.button("👕 INDUMENTARIA"): st.session_state.seccion = "Indumentaria"; st.rerun()
     st.stop()
 
-# 6. PANELES DE CARGA
-st.button("⬅️ Volver al Menú", on_click=lambda: setattr(st.session_state, 'seccion', 'Menu'))
-st.subheader(f"📍 {st.session_state.seccion.replace('_', ' ')}")
+# 6. PANEL COMPACTO
+st.button("⬅️ Volver", on_click=lambda: setattr(st.session_state, 'seccion', 'Menu'))
+st.markdown(f"### 📍 {st.session_state.seccion.replace('_', ' ')}")
 
 listas = {
     "Materiales": ["13008 CONTROL", "30032 CABLE", "31025 PRECINTO"],
@@ -134,22 +127,21 @@ listas = {
 }
 items = listas.get(st.session_state.seccion, [])
 
-t1, t2 = st.tabs(["📝 REGISTRAR CARGA", "📋 VER PLANILLA"])
+t1, t2 = st.tabs(["📝 REGISTRAR", "📋 PLANILLA"])
 
 with t1:
-    with st.form("form_carga", clear_on_submit=True):
-        sel = st.selectbox("Seleccione Artículo:", items)
-        cant = st.number_input("Cantidad:", min_value=1, value=1, step=1)
-        # Lógica anti-duplicados
-        if st.form_submit_button("AÑADIR A PLANILLA"):
-            art_nom = sel.split(" ", 1)[1] if " " in sel and "Insumos" not in st.session_state.seccion else sel
-            if any(i['Articulo'] == art_nom for i in st.session_state.carrito):
-                st.warning("⚠️ Este artículo ya está en la planilla inferior.")
+    with st.form("f", clear_on_submit=True):
+        sel = st.selectbox("Artículo:", items)
+        cant = st.number_input("Cantidad:", min_value=1, step=1)
+        if st.form_submit_button("AGREGAR"):
+            # Lógica Anti-Duplicados
+            art = sel.split(" ", 1)[1] if " " in sel and "Insumos" not in st.session_state.seccion else sel
+            if any(i['Articulo'] == art for i in st.session_state.carrito):
+                st.error("Ya existe en planilla.")
             else:
                 st.session_state.carrito.append({
-                    "Articulo": art_nom, "Cantidad": int(cant),
-                    "Nombre": st.session_state.datos_usuario['Nombre'],
-                    "Fecha": datetime.now().strftime("%d/%m/%y")
+                    "Articulo": art, "Cantidad": int(cant),
+                    "Nombre": st.session_state.datos_usuario['Nombre']
                 })
                 st.rerun()
 
@@ -157,26 +149,26 @@ with t2:
     if not st.session_state.carrito:
         st.info("Planilla vacía.")
     else:
-        # CABECERA DE PLANILLA densa
-        h1, h2, h3 = st.columns([1, 6, 1])
-        h1.markdown('<div class="table-header">CANT</div>', unsafe_allow_html=True)
-        h2.markdown('<div class="table-header">DESCRIPCIÓN</div>', unsafe_allow_html=True)
-        h3.markdown('<div class="table-header">ELIM</div>', unsafe_allow_html=True)
+        # ENCABEZADOS (Unificados)
+        h1, h2, h3 = st.columns([1, 6, 0.8])
+        h1.markdown('<div class="header-box">CANT</div>', unsafe_allow_html=True)
+        h2.markdown('<div class="header-box">DESCRIPCIÓN</div>', unsafe_allow_html=True)
+        h3.markdown('<div class="header-box">X</div>', unsafe_allow_html=True)
         
-        # FILAS DE PLANILLA
+        # FILAS (Sin separación)
         for idx, item in enumerate(st.session_state.carrito):
-            r1, r2, r3 = st.columns([1, 6, 1])
-            r1.markdown(f'<p class="cell-data" style="text-align:center">{item["Cantidad"]}</p>', unsafe_allow_html=True)
-            r2.markdown(f'<p class="cell-data">{item["Articulo"]}</p>', unsafe_allow_html=True)
+            r1, r2, r3 = st.columns([1, 6, 0.8])
+            r1.markdown(f'<div class="cell-data" style="width:100%; text-align:center">{item["Cantidad"]}</div>', unsafe_allow_html=True)
+            r2.markdown(f'<div class="cell-data">{item["Articulo"]}</div>', unsafe_allow_html=True)
             if r3.button("X", key=f"x_{idx}"):
                 st.session_state.carrito.pop(idx)
                 st.rerun()
 
-        st.write("")
-        if st.button("🚀 CONFIRMAR TODO Y SUBIR"):
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🚀 SUBIR PLANILLA"):
             df_final = pd.DataFrame(st.session_state.carrito)
             df_hist = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
             conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_hist, df_final]))
-            st.success("Planilla enviada.")
+            st.success("¡Enviado!")
             st.session_state.carrito = []
             time.sleep(1); st.rerun()
