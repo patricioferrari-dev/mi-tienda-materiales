@@ -18,30 +18,34 @@ def check_login():
         if email_ingresado in [e.lower() for e in lista_blanca]:
             st.session_state.autenticado = True
             st.session_state.email_usuario = email_ingresado
+        else:
+            st.error("🚫 Correo no autorizado.")
     except:
-        st.error("Error en Secrets.")
+        st.error("⚠️ Error en Configuración (Secrets).")
 
 if not st.session_state.autenticado:
     st.title("🔐 Acceso")
     st.text_input("Email:", key="email_login", on_change=check_login)
     st.stop()
 
-# Conexión
+# Conexión a GSheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- VERIFICACIÓN DE BLOQUEO ---
+# --- VERIFICAR SI ESTÁ BLOQUEADO ---
 try:
     df_auth = conn.read(worksheet="Autorizaciones", ttl=0)
     if st.session_state.email_usuario in df_auth[df_auth['Estado'] == 'Bloqueado']['Email'].values:
-        st.warning("⚠️ Usuario bloqueado. Pedido ya realizado.")
+        st.title("🚫 Acceso Restringido")
+        st.warning(f"Hola {st.session_state.email_usuario}, ya registraste un pedido hoy.")
+        st.info("Espera a que el administrador te autorice nuevamente.")
         st.stop()
 except:
     pass
 
+# --- DISEÑO DEL FORMULARIO (ESTILO ANTERIOR) ---
 st.title("📦 Formulario de Pedidos")
-st.caption(f"Conectado como: {st.session_state.email_usuario}")
+st.success(f"👷 Técnico: **{st.session_state.email_usuario}**")
 
-# --- LISTA DE MATERIALES ---
 materiales_disponibles = [
     "13008 CONTROL REMOTO PARA DECO SAGECOM DCWMI303. CON BOT",
     "30032 CABLE COAXIL RG6 QUADSHIELD NEGRO CON PORTANTE",
@@ -72,68 +76,53 @@ materiales_disponibles = [
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
 
-# --- TRUCO DE FLUIDEZ: SELECCIÓN FUERA DEL FORMULARIO ---
-# Al seleccionar aquí, la app se recarga y el foco baja al siguiente input
-seleccion = st.selectbox("1. Selecciona el artículo:", ["--- Elegir material ---"] + materiales_disponibles)
-
-if seleccion != "--- Elegir material ---":
-    # Formulario solo para la cantidad y el botón
-    with st.form("form_cantidad", clear_on_submit=True):
-        # El text_input vacío permite escribir de inmediato
-        cantidad_str = st.text_input("2. Escribe la cantidad:", placeholder="Ingresa número...")
-        
-        btn_agregar = st.form_submit_button("➕ AGREGAR AL CARRITO")
-        
-        if btn_agregar:
-            try:
-                can_num = int(cantidad_str)
-                if can_num > 0:
-                    partes = seleccion.split(" ", 1)
-                    st.session_state.carrito.append({
-                        "Tecnico": st.session_state.email_usuario,
-                        "Codigo": partes[0],
-                        "Articulo": partes[1] if len(partes) > 1 else "",
-                        "Cantidad": can_num
-                    })
-                    st.success(f"Añadido: {partes[0]}")
-                    st.rerun() # Esto limpia el formulario y vuelve arriba
-                else:
-                    st.error("Mínimo 1")
-            except ValueError:
-                st.error("Escribe solo números")
+# Volvemos al formulario integrado que tanto te gustaba
+with st.form("formulario_pedido", clear_on_submit=True):
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        seleccion = st.selectbox("Artículo:", materiales_disponibles)
+    with col2:
+        # Usamos text_input para que puedan borrar rápido sin el bug del "0"
+        cantidad_str = st.text_input("Cantidad:", placeholder="0")
+    
+    boton_agregar = st.form_submit_button("➕ Agregar al pedido")
+    
+    if boton_agregar:
+        try:
+            cantidad_num = int(cantidad_str)
+            if cantidad_num > 0:
+                partes = seleccion.split(" ", 1)
+                st.session_state.carrito.append({
+                    "Tecnico": st.session_state.email_usuario,
+                    "Codigo": partes[0],
+                    "Articulo": partes[1] if len(partes) > 1 else "",
+                    "Cantidad": cantidad_num
+                })
+                st.rerun()
+            else:
+                st.error("Mínimo 1")
+        except ValueError:
+            st.error("Escribe un número")
 
 # --- RESUMEN Y ENVÍO ---
 if st.session_state.carrito:
-    st.divider()
-    st.subheader("🛒 Tu pedido actual")
-    df_p = pd.DataFrame(st.session_state.carrito)
-    st.table(df_p)
+    st.subheader("🛒 Pedido actual")
+    df_pedido = pd.DataFrame(st.session_state.carrito)
+    st.table(df_pedido)
     
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🗑️ Vaciar"):
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("🗑️ Vaciar Carrito"):
             st.session_state.carrito = []
             st.rerun()
-    with col2:
-        if st.button("🚀 ENVIAR Y BLOQUEAR ACCESO"):
+    with col_b:
+        if st.button("🚀 ENVIAR Y FINALIZAR"):
             try:
-                # Guardar Pedidos
-                ex_ped = conn.read(worksheet="Pedidos", ttl=0).dropna(how='all')
-                act_ped = pd.concat([ex_ped, df_p], ignore_index=True)
-                conn.update(worksheet="Pedidos", data=act_ped)
-                
-                # Bloquear Usuario
+                # 1. Guardar Pedidos
                 try:
-                    ex_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+                    existente = conn.read(worksheet="Pedidos", ttl=0).dropna(how='all')
                 except:
-                    ex_auth = pd.DataFrame(columns=["Email", "Estado"])
+                    existente = pd.DataFrame(columns=["Tecnico", "Codigo", "Articulo", "Cantidad"])
                 
-                nuevo_b = pd.DataFrame([{"Email": st.session_state.email_usuario, "Estado": "Bloqueado"}])
-                act_auth = pd.concat([ex_auth, nuevo_b], ignore_index=True)
-                conn.update(worksheet="Autorizaciones", data=act_auth)
-                
-                st.balloons()
-                st.session_state.carrito = []
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error: {e}")
+                actualizado = pd.concat([existente, df_pedido], ignore_index=True)
+                conn.update(worksheet="Pedidos", data=actualizado
