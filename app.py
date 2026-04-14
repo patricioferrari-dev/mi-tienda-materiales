@@ -1,62 +1,73 @@
 import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
+from datetime import datetime
+import pytz
 
 # 1. CONFIGURACIÓN DE PÁGINA Y ESTILOS
 st.set_page_config(page_title="Sistema de Pedidos", page_icon="📦", layout="centered")
 
-# CSS para ocultar menús y botones de desarrollo
+# CSS para ocultar menús
 hide_style = """
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     .stDeployButton {display:none;}
-    /* Estilo para que los botones X se vean más compactos */
     .stButton > button {padding: 2px 10px; border-radius: 5px;}
     </style>
     """
 st.markdown(hide_style, unsafe_allow_html=True)
 
+# --- LÓGICA DE HORARIO (BLOQUEO HASTA LAS 15HS) ---
+tz_arg = pytz.timezone('America/Argentina/Buenos_Aires')
+hora_actual = datetime.now(tz_arg).time()
+hora_apertura = datetime.strptime("15:00", "%H:%M").time()
+
 # --- LÓGICA DE LOGIN ---
 if 'autenticado' not in st.session_state:
     st.session_state.autenticado = False
-if 'email_usuario' not in st.session_state:
-    st.session_state.email_usuario = ""
 
 def check_login():
-    email_ingresado = st.session_state.email_login.lower().strip()
+    email = st.session_state.email_login.lower().strip()
     try:
-        lista_blanca = st.secrets["usuarios_autorizados"]["emails"]
-        if email_ingresado in [e.lower() for e in lista_blanca]:
+        lista = st.secrets["usuarios_autorizados"]["emails"]
+        if email in [e.lower() for e in lista]:
             st.session_state.autenticado = True
-            st.session_state.email_usuario = email_ingresado
+            st.session_state.email_usuario = email
         else:
             st.error("🚫 Correo no autorizado.")
-    except Exception:
-        st.error("⚠️ Error: Revisa los Secrets en Streamlit Cloud.")
+    except:
+        st.error("⚠️ Error en Secrets.")
 
 if not st.session_state.autenticado:
     st.title("🔐 Acceso")
     st.text_input("Ingresa tu Email:", key="email_login", on_change=check_login)
     st.stop()
 
+# --- VALIDACIÓN DE HORARIO DESPUÉS DEL LOGIN ---
+if hora_actual < hora_apertura:
+    st.title("⏳ Sistema Cerrado")
+    st.warning(f"Hola {st.session_state.email_usuario}. Los pedidos se habilitan a las **15:00 hs**.")
+    st.info(f"Hora actual en Argentina: **{hora_actual.strftime('%H:%M')}**")
+    st.stop()
+
 # --- CONEXIÓN A GOOGLE SHEETS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- VERIFICAR SI ESTÁ BLOQUEADO ---
+# --- VERIFICAR BLOQUEO POR PEDIDO PREVIO ---
 try:
     df_auth = conn.read(worksheet="Autorizaciones", ttl=0)
     if st.session_state.email_usuario in df_auth[df_auth['Estado'] == 'Bloqueado']['Email'].values:
         st.title("🚫 Acceso Restringido")
-        st.warning(f"Hola {st.session_state.email_usuario}, ya registraste un pedido hoy.")
+        st.error("Ya registraste un pedido hoy. Acceso pausado.")
         st.stop()
-except Exception:
+except:
     pass
 
-# --- LISTA DE MATERIALES ---
+# --- FORMULARIO DE CARGA ---
 st.title("📦 Formulario de Pedidos")
-st.info(f"👷 Técnico: **{st.session_state.email_usuario}**")
+st.success(f"👷 Técnico: **{st.session_state.email_usuario}**")
 
 materiales_disponibles = [
     "13008 CONTROL REMOTO PARA DECO SAGECOM DCWMI303. CON BOT",
@@ -88,7 +99,6 @@ materiales_disponibles = [
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
 
-# --- FORMULARIO DE CARGA ---
 with st.form("formulario_pedido", clear_on_submit=True):
     col_art, col_cant = st.columns([3, 1])
     with col_art:
@@ -113,47 +123,32 @@ with st.form("formulario_pedido", clear_on_submit=True):
         except ValueError:
             st.error("Ingresa un número")
 
-# --- RESUMEN CON BOTÓN DE ELIMINAR (X) ---
+# --- RESUMEN CON X PARA ELIMINAR ---
 if st.session_state.carrito:
     st.markdown("---")
     st.subheader("🛒 Tu Pedido")
-    
-    # Encabezados de la tabla manual
-    h1, h2, h3 = st.columns([3, 1, 0.5])
-    h1.caption("**Artículo**")
-    h2.caption("**Cant.**")
-    h3.write("") # Espacio para la X
-
-    # Iteramos el carrito para crear las filas
     for i, item in enumerate(st.session_state.carrito):
         c1, c2, c3 = st.columns([3, 1, 0.5])
         c1.write(f"{item['Codigo']} - {item['Articulo']}")
         c2.write(f"{item['Cantidad']}")
-        # El botón de eliminar
         if c3.button("❌", key=f"btn_{i}"):
             st.session_state.carrito.pop(i)
             st.rerun()
 
     st.markdown("---")
-    
-    # --- ENVÍO FINAL ---
     if st.button("🚀 ENVIAR PEDIDO COMPLETO"):
         try:
             df_final = pd.DataFrame(st.session_state.carrito)
             
-            # 1. Guardar en Pedidos
-            try:
-                existente = conn.read(worksheet="Pedidos", ttl=0).dropna(how='all')
-            except Exception:
-                existente = pd.DataFrame(columns=["Tecnico", "Codigo", "Articulo", "Cantidad"])
-            
+            # 1. Guardar Pedidos
+            existente = conn.read(worksheet="Pedidos", ttl=0).dropna(how='all')
             act_pedidos = pd.concat([existente, df_final], ignore_index=True)
             conn.update(worksheet="Pedidos", data=act_pedidos)
             
             # 2. Registrar Bloqueo
             try:
                 ex_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
-            except Exception:
+            except:
                 ex_auth = pd.DataFrame(columns=["Email", "Estado"])
             
             nuevo_b = pd.DataFrame([{"Email": st.session_state.email_usuario, "Estado": "Bloqueado"}])
@@ -161,8 +156,8 @@ if st.session_state.carrito:
             conn.update(worksheet="Autorizaciones", data=act_auth)
             
             st.balloons()
-            st.success("✅ ¡Enviado! Tu acceso ha sido pausado.")
+            st.success("✅ ¡Enviado!")
             st.session_state.carrito = []
             st.rerun()
         except Exception as e:
-            st.error(f"Error al enviar: {e}")
+            st.error(f"Error: {e}")
