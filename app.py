@@ -7,122 +7,114 @@ import time
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="SGM - Gestión Integral", page_icon="🏢", layout="wide")
 
-# 2. CSS DE ALTO NIVEL: X Minimalista y Grilla Pulida
+# 2. CSS PARA ESTILO HOJA DE CÁLCULO (EXCEL STYLE)
 st.markdown("""
     <style>
-    .stApp { background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); }
-    
-    .block-container { max-width: 900px; padding-top: 4rem; }
+    .stApp { background-color: #f4f7f9; }
+    .block-container { max-width: 950px; padding-top: 2rem; }
 
-    /* Tarjeta Principal */
+    /* Contenedor principal */
     [data-testid="stVerticalBlock"] > div:has(div.stButton) {
-        background: rgba(255, 255, 255, 0.9);
-        backdrop-filter: blur(10px);
-        padding: 2.5rem;
-        border-radius: 24px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.08);
-        border: 1px solid rgba(255, 255, 255, 0.3);
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
     }
 
-    /* Botones Menú Principal */
-    .stButton>button {
-        width: 100%; border-radius: 18px; font-weight: 700;
-        min-height: 100px; padding: 15px 25px !important;
-        background-color: #ffffff; color: #334155;
-        border: 1px solid #e2e8f0; transition: all 0.4s ease;
+    /* ESTILO TABLA COMPACTA */
+    [data-testid="stHorizontalBlock"] {
+        gap: 0px !important;
+        margin-bottom: -1px !important; /* Une las celdas */
     }
-    .stButton>button:hover { border-color: #3b82f6; color: #3b82f6; transform: translateY(-5px); }
 
-    /* Grilla de Pedidos: Celdas más compactas */
     div[data-testid="stColumn"] {
-        border: 1px solid #eef2f6 !important;
-        padding: 5px 10px !important;
-        display: flex; align-items: center; justify-content: center;
-        background-color: #ffffff;
-        min-height: 45px !important;
+        border: 1px solid #d1d5db !important;
+        padding: 4px 10px !important; /* Padding mínimo como Excel */
+        min-height: 32px !important;
+        display: flex;
+        align-items: center;
+        background-color: white;
     }
 
-    /* BOTÓN X MINIMALISTA (Corrección de tamaño) */
+    /* Encabezados de tabla */
+    .header-cell {
+        background-color: #f8fafc !important;
+        font-weight: bold;
+        color: #475569;
+        font-size: 0.85rem;
+    }
+
+    /* BOTÓN X ESTILO CELDA */
     div[data-testid="stColumn"] button {
         background-color: transparent !important;
-        color: #ff4b4b !important;
-        border: 1px solid #ff4b4b !important;
-        height: 24px !important;  /* Tamaño similar a la letra */
-        width: 24px !important;
-        min-width: 24px !important;
-        padding: 0px !important;
+        color: #ef4444 !important;
+        border: none !important;
+        height: 22px !important;
+        width: 100% !important;
         font-size: 14px !important;
         font-weight: bold !important;
-        border-radius: 4px !important;
-        line-height: 1 !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
+        padding: 0px !important;
+        margin: 0px !important;
     }
     
     div[data-testid="stColumn"] button:hover {
-        background-color: #ff4b4b !important;
-        color: white !important;
+        background-color: #fee2e2 !important;
+        border-radius: 4px;
     }
 
-    /* Quitar bordes extra de los tabs */
-    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-    
+    .cell-text {
+        font-size: 0.9rem;
+        color: #1e293b;
+        margin: 0;
+    }
+
     #MainMenu, footer, header {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
-# 3. ESTADOS E INICIALIZACIÓN
+# 3. ESTADOS
 if 'autenticado' not in st.session_state: st.session_state.autenticado = False
 if 'seccion' not in st.session_state: st.session_state.seccion = "Menu"
 if 'carrito' not in st.session_state: st.session_state.carrito = []
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 4. LÓGICA DE ACCESO
+# 4. ACCESO
 if not st.session_state.autenticado:
     st.title("🔐 Acceso")
-    with st.container():
-        email_log = st.text_input("Correo:")
-        pass_log = st.text_input("Contraseña:", type="password")
-        if st.button("Entrar"):
-            df_db = conn.read(worksheet="DB_Tecnicos", ttl=0)
-            user = df_db[(df_db['Email'].str.lower() == email_log.lower()) & (df_db['Contrasena'].astype(str) == pass_log)]
-            if not user.empty:
-                st.session_state.autenticado = True
-                st.session_state.datos_usuario = user.iloc[0].to_dict()
-                st.rerun()
-            else: st.error("Credenciales incorrectas")
+    email = st.text_input("Email:")
+    pwd = st.text_input("Contraseña:", type="password")
+    if st.button("Entrar"):
+        df_db = conn.read(worksheet="DB_Tecnicos", ttl=0)
+        user = df_db[(df_db['Email'].str.lower() == email.lower()) & (df_db['Contrasena'].astype(str) == pwd)]
+        if not user.empty:
+            st.session_state.autenticado = True
+            st.session_state.datos_usuario = user.iloc[0].to_dict()
+            st.rerun()
     st.stop()
 
-# 5. MENÚ PRINCIPAL
-dni_raw = str(st.session_state.datos_usuario.get('DNI', ''))
-dni_actual = dni_raw.split(".")[0].replace(" ", "").replace(".", "")
+# 5. MENÚ
+dni_actual = str(st.session_state.datos_usuario['DNI']).split(".")[0]
 
 if st.session_state.seccion == "Menu":
-    st.title("🏢 Panel de Control")
-    st.subheader(f"Hola, {st.session_state.datos_usuario['Nombre']}")
-    st.divider()
-
+    st.title("🏢 Gestión de Stock")
+    st.write(f"Usuario: **{st.session_state.datos_usuario['Nombre']}**")
+    
+    # Botones de menú grandes
+    c1, c2, c3 = st.columns(3)
     if dni_actual == "1111111":
-        c1, c2 = st.columns(2)
-        if c1.button("📚\nINSUMOS\nLIBRERÍA"): st.session_state.seccion = "Insumos_Libreria"; st.rerun()
-        if c2.button("🧼\nINSUMOS\nLIMPIEZA"): st.session_state.seccion = "Insumos_Limpieza"; st.rerun()
+        if c1.button("📚\nLIBRERÍA"): st.session_state.seccion = "Insumos_Libreria"; st.rerun()
+        if c2.button("🧼\nLIMPIEZA"): st.session_state.seccion = "Insumos_Limpieza"; st.rerun()
     else:
-        c1, c2, c3 = st.columns(3)
         if c1.button("📦\nMATERIALES"): st.session_state.seccion = "Materiales"; st.rerun()
         if c2.button("🔧\nHERRAMIENTAS"): st.session_state.seccion = "Herramientas"; st.rerun()
         if c3.button("👕\nINDUMENTARIA"): st.session_state.seccion = "Indumentaria"; st.rerun()
     st.stop()
 
-# 6. CARGA Y REVISIÓN
-col_back, col_title = st.columns([1, 6])
-with col_back:
-    if st.button("⬅️"): st.session_state.seccion = "Menu"; st.rerun()
-with col_title:
-    st.title(st.session_state.seccion.replace('_', ' '))
+# 6. CARGA Y TABLA
+st.button("⬅️ Menú", on_click=lambda: setattr(st.session_state, 'seccion', 'Menu'))
+st.subheader(f"Sección: {st.session_state.seccion.replace('_', ' ')}")
 
-# Listas (puedes ampliar estas listas)
 listas = {
     "Materiales": ["13008 CONTROL", "30032 CABLE", "31025 PRECINTO"],
     "Herramientas": ["H001 PINZA", "H002 ALICATE"],
@@ -132,57 +124,50 @@ listas = {
 }
 items = listas.get(st.session_state.seccion, [])
 
-t1, t2 = st.tabs(["📝 CARGAR", "🛒 REVISAR"])
+t1, t2 = st.tabs(["📝 CARGAR ARTÍCULO", "📊 REVISAR PLANILLA"])
 
 with t1:
     with st.form("carga_f", clear_on_submit=True):
-        sel = st.selectbox("Artículo:", items)
-        cant = st.text_input("Cantidad:")
-        mot = st.radio("Motivo:", ["Cambio", "Desgaste", "Perdido"], horizontal=True) if st.session_state.seccion in ["Herramientas", "Indumentaria"] else ""
-        
-        if st.form_submit_button("AÑADIR AL CARRITO"):
-            art_final = sel.split(" ", 1)[1] if " " in sel and st.session_state.seccion not in ["Insumos_Libreria", "Insumos_Limpieza"] else sel
-            
-            # BLOQUEO DE DUPLICADOS
-            if any(x['Articulo'] == art_final for x in st.session_state.carrito):
-                st.warning(f"El artículo '{art_final}' ya está en la lista.")
-            elif cant.isdigit() and int(cant) > 0:
-                cod_f = sel.split(" ", 1)[0] if " " in sel and st.session_state.seccion not in ["Insumos_Libreria", "Insumos_Limpieza"] else "S/C"
+        sel = st.selectbox("Seleccione:", items)
+        cant = st.number_input("Cantidad:", min_value=1, step=1)
+        if st.form_submit_button("AÑADIR"):
+            # Lógica Anti-Duplicados
+            art_final = sel.split(" ", 1)[1] if " " in sel and "Insumos" not in st.session_state.seccion else sel
+            if any(item['Articulo'] == art_final for item in st.session_state.carrito):
+                st.error("Este artículo ya está en la lista.")
+            else:
+                cod_f = sel.split(" ", 1)[0] if " " in sel and "Insumos" not in st.session_state.seccion else "S/C"
                 st.session_state.carrito.append({
                     "Articulo": art_final, "Codigo": cod_f, "Cantidad": int(cant),
-                    "Motivo": mot, "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                    "Nombre": st.session_state.datos_usuario['Nombre'], "DNI": st.session_state.datos_usuario['DNI']
+                    "Fecha": datetime.now().strftime("%d/%m/%Y"),
+                    "Nombre": st.session_state.datos_usuario['Nombre']
                 })
-                st.success("Añadido correctamente.")
-                time.sleep(0.5); st.rerun()
+                st.rerun()
 
 with t2:
     if not st.session_state.carrito:
-        st.info("El carrito está vacío.")
+        st.info("No hay datos cargados.")
     else:
-        # Encabezados de tabla con bordes
-        h1, h2, h3 = st.columns([1, 4, 1])
-        h1.markdown("**Cant.**")
-        h2.markdown("**Descripción**")
-        h3.markdown("**Eliminar**")
+        # ENCABEZADOS ESTILO EXCEL
+        h1, h2, h3 = st.columns([1, 5, 1])
+        h1.markdown('<div class="header-cell">CANT</div>', unsafe_allow_html=True)
+        h2.markdown('<div class="header-cell">DESCRIPCIÓN DEL ARTÍCULO</div>', unsafe_allow_html=True)
+        h3.markdown('<div class="header-cell">ELIM</div>', unsafe_allow_html=True)
         
+        # FILAS
         for i, item in enumerate(st.session_state.carrito):
-            c1, c2, c3 = st.columns([1, 4, 1])
-            c1.write(f"{item['Cantidad']}")
-            c2.write(f"{item['Articulo']}")
-            # Botón X minimalista
-            if c3.button("X", key=f"del_{i}"):
+            r1, r2, r3 = st.columns([1, 5, 1])
+            r1.markdown(f'<p class="cell-text">{item["Cantidad"]}</p>', unsafe_allow_html=True)
+            r2.markdown(f'<p class="cell-text">{item["Articulo"]}</p>', unsafe_allow_html=True)
+            if r3.button("X", key=f"btn_{i}"):
                 st.session_state.carrito.pop(i)
                 st.rerun()
 
         st.write("")
-        if st.button("🚀 ENVIAR PEDIDO FINAL"):
-            try:
-                df_send = pd.DataFrame(st.session_state.carrito)
-                df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
-                conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_send]))
-                st.balloons()
-                st.session_state.carrito = []
-                st.session_state.seccion = "Menu"
-                time.sleep(1); st.rerun()
-            except Exception as e: st.error(f"Error al enviar: {e}")
+        if st.button("🚀 CONFIRMAR Y ENVIAR PLANILLA"):
+            df_new = pd.DataFrame(st.session_state.carrito)
+            df_db = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
+            conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_db, df_new]))
+            st.success("Enviado con éxito.")
+            st.session_state.carrito = []
+            time.sleep(1); st.rerun()
