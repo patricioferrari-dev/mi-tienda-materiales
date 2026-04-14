@@ -41,7 +41,7 @@ def validar_email():
         else:
             st.error("🚫 Correo no autorizado en la lista blanca.")
     except:
-        st.error("⚠️ Error: Configura 'usuarios_autorizados' en Secrets.")
+        st.error("⚠️ Error: Configura 'usuarios_autorizados' in Secrets.")
 
 # --- FLUJO DE LOGIN / REGISTRO ---
 if not st.session_state.autenticado:
@@ -51,47 +51,51 @@ if not st.session_state.autenticado:
         st.text_input("Correo Electrónico:", key="email_input", on_change=validar_email)
         st.stop()
 
-    # Leer DB de técnicos registrados y el Padrón de DNIs autorizados
     df_db = conn.read(worksheet="DB_Tecnicos", ttl=0).dropna(how='all')
     user_info = df_db[df_db['Email'] == st.session_state.email_usuario]
 
     if user_info.empty:
-        # --- PROCESO DE REGISTRO ---
         st.warning(f"Hola {st.session_state.email_usuario}, no estás registrado. Completa tus datos:")
         
         with st.form("registro_nuevo"):
             col_a, col_b = st.columns(2)
-            dni_reg = col_a.text_input("DNI (Sin puntos):")
+            # El usuario ahora puede poner puntos, el código los limpiará
+            dni_input = col_a.text_input("DNI (puedes usar puntos):")
             nombre = col_b.text_input("Nombre:")
             apellido = col_a.text_input("Apellido:")
             celular = col_b.text_input("Celular:")
             password = st.text_input("Crea una Contraseña:", type="password")
             
             if st.form_submit_button("Validar y Finalizar Registro"):
-                if all([nombre, apellido, dni_reg, celular, password]):
-                    # VALIDACIÓN DE DNI CONTRA EL PADRÓN
+                if all([nombre, apellido, dni_input, celular, password]):
+                    # --- LIMPIEZA DE DNI ---
+                    # Quitamos puntos y espacios del input del usuario
+                    dni_limpio = dni_input.replace(".", "").replace(" ", "").strip()
+                    
                     try:
                         df_padron = conn.read(worksheet="Padron_DNI", ttl=0).dropna(how='all')
-                        # Convertimos a string para comparar sin errores de tipo
-                        lista_dnis_validos = df_padron['DNI'].astype(str).tolist()
+                        # Limpiamos también el padrón por si el Excel tiene puntos o es formato numérico
+                        lista_dnis_validos = df_padron['DNI'].astype(str).str.replace(".0", "", regex=False).str.replace(".", "", regex=False).tolist()
                         
-                        if dni_reg.strip() in lista_dnis_validos:
-                            # Proceder al registro
+                        if dni_limpio in lista_dnis_validos:
+                            # Guardamos el DNI con formato de puntos para que se vea lindo en el Excel
+                            dni_con_puntos = "{:,}".format(int(dni_limpio)).replace(",", ".")
+                            
                             nuevo_perfil = pd.DataFrame([{
                                 "Email": st.session_state.email_usuario,
                                 "Nombre": nombre.title(),
                                 "Apellido": apellido.title(),
                                 "Celular": celular,
-                                "DNI": dni_reg.strip(),
+                                "DNI": dni_con_puntos,
                                 "Contrasena": password
                             }])
                             df_actualizado = pd.concat([df_db, nuevo_perfil], ignore_index=True)
                             conn.update(worksheet="DB_Tecnicos", data=df_actualizado)
-                            st.success("✅ DNI Verificado. Registro exitoso.")
+                            st.success(f"✅ DNI {dni_con_puntos} Verificado. Registro exitoso.")
                             time.sleep(2)
                             st.rerun()
                         else:
-                            st.error("❌ El DNI ingresado no figura en el padrón de personal autorizado. Contacte al supervisor.")
+                            st.error(f"❌ El DNI {dni_limpio} no figura en el padrón. Verifique que sea correcto o contacte al supervisor.")
                     except Exception as e:
                         st.error(f"Error al validar DNI: {e}")
                 else:
@@ -131,7 +135,7 @@ if st.session_state.seccion == "Menu":
             st.rerun()
     st.stop()
 
-# 5. VALIDACIONES PARA MATERIALES (L-M-V | 07:00 a 15:00)
+# 5. VALIDACIONES PARA MATERIALES
 if st.session_state.seccion == "Materiales":
     tz_arg = pytz.timezone('America/Argentina/Buenos_Aires')
     ahora_arg = datetime.now(tz_arg)
