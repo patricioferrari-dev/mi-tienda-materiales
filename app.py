@@ -5,21 +5,13 @@ from datetime import datetime
 import time
 
 # 1. CONFIGURACIÓN DE PÁGINA
-st.set_page_config(page_title="SGM - Gestión Integral", page_icon="🏢", layout="wide")
+st.set_page_config(page_title="SGM - Gestión", page_icon="🏢", layout="wide")
 
-# 2. CSS DE ALTO CONTRASTE Y COMPACIDAD MÁXIMA
+# 2. CSS AJUSTADO: CELDAS MINI Y CONTRASTE
 st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
-    .block-container { max-width: 800px; padding-top: 1.5rem; }
-
-    /* --- MENÚ PRINCIPAL --- */
-    .stButton>button {
-        width: 100%; border-radius: 10px; font-weight: 700;
-        min-height: 60px; background-color: #ffffff; color: #334155;
-        border: 1px solid #e2e8f0; transition: all 0.2s;
-    }
-    .stButton>button:hover { border-color: #3b82f6; color: #3b82f6; }
+    .block-container { max-width: 800px; padding-top: 1rem; }
 
     /* --- FORMULARIO DE CARGA --- */
     [data-testid="stForm"] {
@@ -33,16 +25,16 @@ st.markdown("""
         border: 1px solid #cbd5e1 !important;
     }
 
-    /* --- PLANILLA ULTRA COMPACTA (Apenas más grande que la letra) --- */
+    /* --- PLANILLA MINI (Apenas más grande que la letra) --- */
     [data-testid="stHorizontalBlock"] {
         gap: 0px !important;
         margin-bottom: -1px !important;
     }
     div[data-testid="stColumn"] {
         border: 1px solid #e2e8f0 !important;
-        padding: 2px 8px !important; /* Padding mínimo */
+        padding: 1px 8px !important; /* Padding ultra reducido */
         background-color: white;
-        min-height: 24px !important; /* Altura mínima ajustada a la letra */
+        min-height: 22px !important; /* Altura mínima para la letra */
         display: flex; align-items: center;
     }
     .header-box {
@@ -51,7 +43,7 @@ st.markdown("""
         font-weight: 700; font-size: 10px;
         width: 100%; text-align: center;
     }
-    .cell-data { font-size: 12px; color: #334155; margin: 0; line-height: 1.2; }
+    .cell-data { font-size: 12px; color: #334155; margin: 0; line-height: 1; }
 
     /* Botón X Minimalista */
     div[data-testid="stColumn"] button {
@@ -60,8 +52,10 @@ st.markdown("""
         border: none !important;
         width: 100% !important;
         height: 18px !important;
+        font-size: 11px !important;
         font-weight: bold !important;
         padding: 0 !important;
+        line-height: 1 !important;
     }
     div[data-testid="stColumn"] button:hover { background-color: #fee2e2 !important; }
 
@@ -121,7 +115,7 @@ listas = {
 }
 items = listas.get(st.session_state.seccion, [])
 
-# Pestaña renombrada a Resumen Pedido
+# Pestaña "Resumen Pedido"
 t1, t2 = st.tabs(["📝 REGISTRAR CARGA", "📋 RESUMEN PEDIDO"])
 
 with t1:
@@ -129,40 +123,55 @@ with t1:
         sel = st.selectbox("Artículo:", items)
         cant = st.number_input("Cantidad:", min_value=1, step=1, value=1)
         if st.form_submit_button("AGREGAR", use_container_width=True):
+            # Limpiamos el nombre para evitar fallos de comparación
             art_nom = sel.split(" ", 1)[1] if " " in sel and "Insumos" not in st.session_state.seccion else sel
+            
+            # CONTROL DE DUPLICADOS ESTRICTO
             if any(i['Articulo'] == art_nom for i in st.session_state.carrito):
-                st.error("Ya está en la lista.")
+                st.error(f"¡Atención! '{art_nom}' ya está cargado en el resumen.")
             else:
                 st.session_state.carrito.append({
-                    "Articulo": art_nom, "Cantidad": int(cant),
+                    "Articulo": art_nom, 
+                    "Cantidad": int(cant),
                     "Nombre": st.session_state.datos_usuario['Nombre'],
                     "Fecha": datetime.now().strftime("%d/%m/%Y")
                 })
+                st.toast(f"Agregado: {art_nom}")
+                time.sleep(0.5)
                 st.rerun()
 
 with t2:
     if not st.session_state.carrito:
         st.info("No hay artículos cargados.")
     else:
+        # CABECERA ULTRA-FINA
         h1, h2, h3 = st.columns([1, 6, 0.8])
         h1.markdown('<div class="header-box">CANT</div>', unsafe_allow_html=True)
         h2.markdown('<div class="header-box">DESCRIPCIÓN</div>', unsafe_allow_html=True)
         h3.markdown('<div class="header-box">ELIM</div>', unsafe_allow_html=True)
         
+        # FILAS SIN HUECOS
+        # Usamos una copia de la lista para iterar y evitar errores al borrar
         for idx, item in enumerate(st.session_state.carrito):
             r1, r2, r3 = st.columns([1, 6, 0.8])
             r1.markdown(f'<div class="cell-data" style="text-align:center; width:100%">{item["Cantidad"]}</div>', unsafe_allow_html=True)
             r2.markdown(f'<div class="cell-data">{item["Articulo"]}</div>', unsafe_allow_html=True)
-            if r3.button("X", key=f"del_{idx}"):
+            
+            # Botón de eliminación con clave única
+            if r3.button("X", key=f"del_{idx}_{item['Articulo']}"):
                 st.session_state.carrito.pop(idx)
                 st.rerun()
 
         st.write("")
-        if st.button("🚀 CONFIRMAR Y ENVIAR", use_container_width=True):
-            df_new = pd.DataFrame(st.session_state.carrito)
-            df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
-            conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new]))
-            st.success("Pedido enviado.")
-            st.session_state.carrito = []
-            time.sleep(1)
-            st.rerun()
+        if st.button("🚀 CONFIRMAR Y ENVIAR PEDIDO", use_container_width=True):
+            if st.session_state.carrito:
+                try:
+                    df_new = pd.DataFrame(st.session_state.carrito)
+                    df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
+                    conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new]))
+                    st.success("¡Pedido enviado con éxito!")
+                    st.session_state.carrito = [] # Limpiamos el carrito tras el envío
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al conectar con la planilla: {e}")
