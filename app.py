@@ -7,13 +7,13 @@ import time
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="SGM - Gestión", page_icon="🏢", layout="wide")
 
-# 2. CSS AJUSTADO: CELDAS MINI Y CONTRASTE
+# 2. CSS PARA COMPACIDAD MÁXIMA Y DISEÑO LIMPIO
 st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
     .block-container { max-width: 800px; padding-top: 1rem; }
 
-    /* --- FORMULARIO DE CARGA --- */
+    /* Formulario de carga */
     [data-testid="stForm"] {
         background-color: #ffffff !important;
         border: 1px solid #e2e8f0 !important;
@@ -25,16 +25,13 @@ st.markdown("""
         border: 1px solid #cbd5e1 !important;
     }
 
-    /* --- PLANILLA MINI (Apenas más grande que la letra) --- */
-    [data-testid="stHorizontalBlock"] {
-        gap: 0px !important;
-        margin-bottom: -1px !important;
-    }
+    /* Planilla Ultra Compacta */
+    [data-testid="stHorizontalBlock"] { gap: 0px !important; margin-bottom: -1px !important; }
     div[data-testid="stColumn"] {
         border: 1px solid #e2e8f0 !important;
-        padding: 1px 8px !important; /* Padding ultra reducido */
+        padding: 1px 8px !important;
         background-color: white;
-        min-height: 22px !important; /* Altura mínima para la letra */
+        min-height: 22px !important;
         display: flex; align-items: center;
     }
     .header-box {
@@ -55,7 +52,6 @@ st.markdown("""
         font-size: 11px !important;
         font-weight: bold !important;
         padding: 0 !important;
-        line-height: 1 !important;
     }
     div[data-testid="stColumn"] button:hover { background-color: #fee2e2 !important; }
 
@@ -63,14 +59,21 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 3. ESTADOS
+# 3. FUNCIONES DE CAMBIO DE SECCIÓN (Para evitar mezclar datos)
+def cambiar_seccion(nueva_seccion):
+    # Si cambiamos de menú, vaciamos el carrito para no mezclar artículos
+    if st.session_state.seccion != nueva_seccion:
+        st.session_state.carrito = []
+        st.session_state.seccion = nueva_seccion
+
+# 4. ESTADOS INICIALES
 if 'autenticado' not in st.session_state: st.session_state.autenticado = False
 if 'seccion' not in st.session_state: st.session_state.seccion = "Menu"
 if 'carrito' not in st.session_state: st.session_state.carrito = []
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 4. ACCESO
+# 5. LOGIN
 if not st.session_state.autenticado:
     st.title("🔐 Acceso SGM")
     user_mail = st.text_input("Usuario:")
@@ -84,7 +87,7 @@ if not st.session_state.autenticado:
             st.rerun()
     st.stop()
 
-# 5. MENÚ PRINCIPAL
+# 6. MENÚ PRINCIPAL
 dni_val = str(st.session_state.datos_usuario.get('DNI', '')).split(".")[0].replace(" ", "")
 
 if st.session_state.seccion == "Menu":
@@ -93,17 +96,17 @@ if st.session_state.seccion == "Menu":
     
     if dni_val == "1111111":
         c1, c2 = st.columns(2)
-        if c1.button("📚\nINSUMOS LIBRERÍA"): st.session_state.seccion = "Insumos_Libreria"; st.rerun()
-        if c2.button("🧼\nINSUMOS LIMPIEZA"): st.session_state.seccion = "Insumos_Limpieza"; st.rerun()
+        if c1.button("📚\nINSUMOS LIBRERÍA"): cambiar_seccion("Insumos_Libreria"); st.rerun()
+        if c2.button("🧼\nINSUMOS LIMPIEZA"): cambiar_seccion("Insumos_Limpieza"); st.rerun()
     else:
         c1, c2, c3 = st.columns(3)
-        if c1.button("📦\nMATERIALES"): st.session_state.seccion = "Materiales"; st.rerun()
-        if c2.button("🔧\nHERRAMIENTAS"): st.session_state.seccion = "Herramientas"; st.rerun()
-        if c3.button("👕\nINDUMENTARIA"): st.session_state.seccion = "Indumentaria"; st.rerun()
+        if c1.button("📦\nMATERIALES"): cambiar_seccion("Materiales"); st.rerun()
+        if c2.button("🔧\nHERRAMIENTAS"): cambiar_seccion("Herramientas"); st.rerun()
+        if c3.button("👕\nINDUMENTARIA"): cambiar_seccion("Indumentaria"); st.rerun()
     st.stop()
 
-# 6. PANEL DE TRABAJO
-st.button("⬅️ Menú", on_click=lambda: setattr(st.session_state, 'seccion', 'Menu'))
+# 7. PANEL DE CARGA Y RESUMEN
+st.button("⬅️ Volver al Menú", on_click=lambda: cambiar_seccion("Menu"))
 st.markdown(f"### 📍 {st.session_state.seccion.replace('_', ' ')}")
 
 listas = {
@@ -115,7 +118,6 @@ listas = {
 }
 items = listas.get(st.session_state.seccion, [])
 
-# Pestaña "Resumen Pedido"
 t1, t2 = st.tabs(["📝 REGISTRAR CARGA", "📋 RESUMEN PEDIDO"])
 
 with t1:
@@ -123,12 +125,12 @@ with t1:
         sel = st.selectbox("Artículo:", items)
         cant = st.number_input("Cantidad:", min_value=1, step=1, value=1)
         if st.form_submit_button("AGREGAR", use_container_width=True):
-            # Limpiamos el nombre para evitar fallos de comparación
+            # Limpiar nombre artículo
             art_nom = sel.split(" ", 1)[1] if " " in sel and "Insumos" not in st.session_state.seccion else sel
             
-            # CONTROL DE DUPLICADOS ESTRICTO
+            # Evitar duplicados en la lista actual
             if any(i['Articulo'] == art_nom for i in st.session_state.carrito):
-                st.error(f"¡Atención! '{art_nom}' ya está cargado en el resumen.")
+                st.error("Este artículo ya está en la lista.")
             else:
                 st.session_state.carrito.append({
                     "Articulo": art_nom, 
@@ -136,42 +138,38 @@ with t1:
                     "Nombre": st.session_state.datos_usuario['Nombre'],
                     "Fecha": datetime.now().strftime("%d/%m/%Y")
                 })
-                st.toast(f"Agregado: {art_nom}")
-                time.sleep(0.5)
                 st.rerun()
 
 with t2:
     if not st.session_state.carrito:
-        st.info("No hay artículos cargados.")
+        st.info(f"No hay artículos para {st.session_state.seccion.replace('_', ' ')}.")
     else:
-        # CABECERA ULTRA-FINA
+        # Cabecera
         h1, h2, h3 = st.columns([1, 6, 0.8])
         h1.markdown('<div class="header-box">CANT</div>', unsafe_allow_html=True)
         h2.markdown('<div class="header-box">DESCRIPCIÓN</div>', unsafe_allow_html=True)
         h3.markdown('<div class="header-box">ELIM</div>', unsafe_allow_html=True)
         
-        # FILAS SIN HUECOS
-        # Usamos una copia de la lista para iterar y evitar errores al borrar
+        # Filas (usando copia para evitar errores de índice al borrar)
         for idx, item in enumerate(st.session_state.carrito):
             r1, r2, r3 = st.columns([1, 6, 0.8])
             r1.markdown(f'<div class="cell-data" style="text-align:center; width:100%">{item["Cantidad"]}</div>', unsafe_allow_html=True)
             r2.markdown(f'<div class="cell-data">{item["Articulo"]}</div>', unsafe_allow_html=True)
-            
-            # Botón de eliminación con clave única
-            if r3.button("X", key=f"del_{idx}_{item['Articulo']}"):
+            if r3.button("X", key=f"btn_{st.session_state.seccion}_{idx}"):
                 st.session_state.carrito.pop(idx)
                 st.rerun()
 
         st.write("")
-        if st.button("🚀 CONFIRMAR Y ENVIAR PEDIDO", use_container_width=True):
-            if st.session_state.carrito:
-                try:
-                    df_new = pd.DataFrame(st.session_state.carrito)
-                    df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
-                    conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new]))
-                    st.success("¡Pedido enviado con éxito!")
-                    st.session_state.carrito = [] # Limpiamos el carrito tras el envío
-                    time.sleep(1)
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error al conectar con la planilla: {e}")
+        if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
+            try:
+                df_new = pd.DataFrame(st.session_state.carrito)
+                # Se envía solo a la hoja correspondiente a la sección actual
+                df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
+                conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new]))
+                
+                st.success(f"Pedido de {st.session_state.seccion.replace('_', ' ')} enviado.")
+                st.session_state.carrito = [] # Limpiar tras enviar
+                time.sleep(1)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error: {e}")
