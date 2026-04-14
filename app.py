@@ -8,16 +8,27 @@ import time
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="SGM - Gestión Integral", page_icon="🏢", layout="centered")
 
-# CSS Profesional
+# CSS Profesional mejorado para los botones de eliminación
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
     .stButton>button { width: 100%; border-radius: 10px; font-weight: bold; height: 3.5em; }
+    /* Estilo para el botón X de eliminar */
+    .stButton>button[kind="secondary"] {
+        color: white;
+        background-color: #ff4b4b;
+        border: none;
+        height: 2.2em;
+        width: 2.2em;
+        border-radius: 5px;
+    }
+    .stButton>button[kind="secondary"]:hover {
+        background-color: #d33;
+        border: none;
+    }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    /* Estilo para que las tablas ocupen todo el ancho */
-    .stDataFrame { width: 100%; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -124,7 +135,7 @@ listas = {
 }
 items = listas.get(st.session_state.seccion, [])
 
-tab1, tab2 = st.tabs(["📝 Cargar Artículos", "🛒 Mi Pedido (Resumen)"])
+tab1, tab2 = st.tabs(["📝 Cargar Artículos", "🛒 Mi Pedido"])
 
 with tab1:
     with st.form("f_carga", clear_on_submit=True):
@@ -161,34 +172,37 @@ with tab2:
     if not st.session_state.carrito:
         st.info("El carrito está vacío.")
     else:
-        st.subheader("Artículos en el pedido actual:")
+        st.subheader("Resumen del Pedido")
         
-        # --- NUEVA VISTA TIPO CELDA (DATAFRAME) ---
-        df_carrito = pd.DataFrame(st.session_state.carrito)
-        
-        # Seleccionamos y renombramos columnas para que se vea lindo en la app
-        columnas_vista = ["Codigo", "Articulo", "Cantidad"]
-        if st.session_state.seccion in ["Herramientas", "Indumentaria"]:
-            columnas_vista.append("Motivo")
-            
-        df_vista = df_carrito[columnas_vista]
-        
-        # Mostramos la tabla
-        st.dataframe(df_vista, use_container_width=True, hide_index=True)
-        
+        # --- ENCABEZADOS DE "TABLA" MANUAL ---
+        h1, h2, h3 = st.columns([1, 4, 1])
+        h1.write("**Cant.**")
+        h2.write("**Descripción**")
+        h3.write("**Elim.**")
         st.divider()
-        
-        # Opción para borrar el último o limpiar todo
-        col_del1, col_del2 = st.columns(2)
-        if col_del1.button("🗑️ Borrar último artículo"):
-            st.session_state.carrito.pop()
-            st.rerun()
-        if col_del2.button("🧹 Vaciar todo el carrito"):
-            st.session_state.carrito = []
-            st.rerun()
 
-        st.divider()
-        
+        # --- FILAS DE PRODUCTOS ---
+        for i, item in enumerate(st.session_state.carrito):
+            c1, c2, c3 = st.columns([1, 4, 1])
+            
+            # Columna 1: Cantidad
+            c1.write(f"{item['Cantidad']}")
+            
+            # Columna 2: Artículo (con código si existe)
+            if item['Codigo'] == "S/C":
+                c2.write(f"{item['Articulo']}")
+            else:
+                c2.write(f"[{item['Codigo']}] {item['Articulo']}")
+            
+            # Columna 3: Botón X Rojo
+            # Usamos kind="secondary" para el estilo CSS personalizado de arriba
+            if c3.button("✖", key=f"del_{i}", kind="secondary"):
+                st.session_state.carrito.pop(i)
+                st.rerun()
+            
+            st.markdown("---") # Línea divisoria entre celdas
+
+        # --- ACCIONES FINALES ---
         if st.button("🚀 CONFIRMAR Y ENVIAR PEDIDO"):
             try:
                 df_e = pd.DataFrame(st.session_state.carrito)
