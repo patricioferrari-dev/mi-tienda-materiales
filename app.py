@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from streamlit_gsheets import GSheetsConnection
 
 # Configuración de la página
 st.set_page_config(page_title="Sistema de Pedidos", page_icon="📦")
@@ -7,7 +8,7 @@ st.set_page_config(page_title="Sistema de Pedidos", page_icon="📦")
 st.title("📦 Formulario de Pedidos Online")
 st.write("Selecciona los materiales y la cantidad que necesites.")
 
-# 1. Lista de materiales (Clave: Nombre, Valor: Precio)
+# 1. Lista de materiales
 materiales_disponibles = {
     "13008 CONTROL REMOTO PARA DECO SAGECOM DCWMI303. CON BOT": 0,
     "30032 CABLE COAXIL RG6 QUADSHIELD NEGRO CON PORTANTE": 0,
@@ -47,32 +48,24 @@ with st.form("formulario_pedido"):
         articulo = st.selectbox("Selecciona el artículo:", list(materiales_disponibles.keys()))
     
     with col2:
-        # AQUÍ ESTÁ LA SEGURIDAD: impedimos números menores a 1 y solo permitimos enteros
-        cantidad = st.number_input("Cantidad:", min_value=1, value=1, step=1) # <-- ESTO SE MODIFICÓ
+        cantidad = st.number_input("Cantidad:", min_value=1, value=1, step=1)
     
     boton_agregar = st.form_submit_button("Agregar al pedido")
 
     if boton_agregar:
-        # Validación extra por si acaso
-        if cantidad >= 1: # <-- ESTO SE MODIFICÓ
-            precio_unitario = materiales_disponibles[articulo]
-            st.session_state.carrito.append({
-                "Artículo": articulo,
-                "Cantidad": cantidad
-            })
-            st.success(f"¡{articulo} agregado!")
-        else:
-            st.error("La cantidad debe ser mayor a 0")
+        st.session_state.carrito.append({
+            "Artículo": articulo,
+            "Cantidad": cantidad
+        })
+        st.success(f"¡{articulo} agregado!")
 
 # --- RESUMEN DEL PEDIDO ---
 st.subheader("🛒 Resumen de tu Pedido")
 
 if st.session_state.carrito:
-    # Mostramos los datos en una tabla limpia
-    df = pd.DataFrame(st.session_state.carrito)
-    st.table(df)
+    df_pedido = pd.DataFrame(st.session_state.carrito)
+    st.table(df_pedido)
     
-    # Botones de acción
     col_a, col_b = st.columns(2)
     
     with col_a:
@@ -82,9 +75,24 @@ if st.session_state.carrito:
 
     with col_b:
         if st.button("Finalizar y Enviar Pedido"):
-            st.balloons()
-            st.success("✅ Pedido enviado correctamente. ¡Gracias por su compra!")
-            # Aquí podrías agregar el guardado en base de datos
-            st.session_state.carrito = [] # Limpiar después de enviar
+            try:
+                # Crear la conexión con Google Sheets
+                conn = st.connection("gsheets", type=GSheetsConnection)
+                
+                # Leer datos existentes para no borrarlos
+                # (Asumimos que la hoja se llama "Sheet1" o "Hoja 1", ajusta si es necesario)
+                existente = conn.read()
+                
+                # Combinar datos viejos con los nuevos
+                actualizado = pd.concat([existente, df_pedido], ignore_index=True)
+                
+                # Guardar de nuevo en la nube
+                conn.update(data=actualizado)
+                
+                st.balloons()
+                st.success("✅ Pedido enviado correctamente. ¡Gracias por su compra!")
+                st.session_state.carrito = [] 
+            except Exception as e:
+                st.error(f"Error al conectar con Google Sheets: {e}")
 else:
-    st.info("El carrito está vacío.")
+    st
