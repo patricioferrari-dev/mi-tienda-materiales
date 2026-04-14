@@ -50,14 +50,12 @@ if 'carrito' not in st.session_state:
     st.session_state.carrito = []
 
 # --- BLOQUEO DE NOMBRE ---
-# Si ya hay algo en el carrito, bloqueamos el selector de nombre
 esta_bloqueado = len(st.session_state.carrito) > 0
 
 tecnico = st.selectbox(
     "👷 Nombre del Técnico:", 
     lista_tecnicos, 
-    disabled=esta_bloqueado,
-    help="Para cambiar de nombre, debes vaciar el carrito primero."
+    disabled=esta_bloqueado
 )
 
 # --- FORMULARIO DE ENTRADA ---
@@ -66,13 +64,16 @@ with st.form("formulario_pedido", clear_on_submit=True):
     with col1:
         seleccion = st.selectbox("Selecciona el artículo:", materiales_disponibles)
     with col2:
-        cantidad = st.number_input("Cantidad:", min_value=1, step=1, value=1)
+        # Al poner value=None, el campo queda vacío para escritura rápida
+        cantidad = st.number_input("Cantidad:", min_value=1, step=1, value=None)
     
     boton_agregar = st.form_submit_button("Agregar al pedido")
     
     if boton_agregar:
         if tecnico == "Seleccionar...":
-            st.error("⚠️ Debes seleccionar un nombre primero.")
+            st.error("⚠️ Selecciona un técnico primero.")
+        elif cantidad is None:
+            st.error("⚠️ Ingresa una cantidad.")
         else:
             partes = seleccion.split(" ", 1)
             cod = partes[0]
@@ -88,18 +89,18 @@ with st.form("formulario_pedido", clear_on_submit=True):
 
 # --- RESUMEN Y ENVÍO ---
 if st.session_state.carrito:
-    st.subheader(f"🛒 Revisión de pedido: {tecnico}")
+    st.subheader(f"🛒 Pedido actual: {tecnico}")
     df_pedido = pd.DataFrame(st.session_state.carrito)
     st.table(df_pedido)
     
     col_a, col_b = st.columns(2)
     with col_a:
-        if st.button("🗑️ Cancelar / Borrar todo"):
+        if st.button("🗑️ Borrar todo"):
             st.session_state.carrito = []
             st.rerun()
 
     with col_b:
-        if st.button("🚀 CONFIRMAR Y ENVIAR"):
+        if st.button("🚀 ENVIAR PEDIDO"):
             try:
                 conn = st.connection("gsheets", type=GSheetsConnection)
                 
@@ -112,14 +113,12 @@ if st.session_state.carrito:
                 actualizado = pd.concat([existente, df_pedido], ignore_index=True)
                 conn.update(worksheet="Pedidos", data=actualizado)
                 
-                st.success("✅ ¡Pedido enviado! Gracias.")
                 st.balloons()
-                
-                # Limpieza final
+                st.success("✅ ¡Enviado!")
                 st.session_state.carrito = []
                 st.rerun()
                 
             except Exception as e:
-                st.error(f"Error al enviar: {e}")
+                st.error(f"Error: {e}")
 else:
-    st.info("Selecciona materiales para comenzar tu pedido.")
+    st.info("Selecciona materiales para comenzar.")
