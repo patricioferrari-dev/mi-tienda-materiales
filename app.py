@@ -14,15 +14,17 @@ if 'email_usuario' not in st.session_state:
 def check_login():
     email_ingresado = st.session_state.email_login.lower().strip()
     try:
+        # Obtenemos la lista de autorizados desde los Secrets
         lista_blanca = st.secrets["usuarios_autorizados"]["emails"]
         if email_ingresado in [e.lower() for e in lista_blanca]:
             st.session_state.autenticado = True
             st.session_state.email_usuario = email_ingresado
         else:
             st.error("🚫 Correo no autorizado.")
-    except:
+    except Exception:
         st.error("⚠️ Error: Configura los correos en los Secrets de Streamlit.")
 
+# Pantalla de Login
 if not st.session_state.autenticado:
     st.title("🔐 Acceso")
     st.text_input("Email:", key="email_login", on_change=check_login)
@@ -39,7 +41,8 @@ try:
         st.warning(f"Hola {st.session_state.email_usuario}, ya registraste un pedido.")
         st.info("Tu acceso está bloqueado hasta que el administrador te autorice nuevamente.")
         st.stop()
-except:
+except Exception:
+    # Si la hoja no existe, simplemente permitimos el paso
     pass
 
 # --- DISEÑO DEL FORMULARIO ---
@@ -48,7 +51,7 @@ st.success(f"👷 Técnico: **{st.session_state.email_usuario}**")
 
 materiales_disponibles = [
     "13008 CONTROL REMOTO PARA DECO SAGECOM DCWMI303. CON BOT",
-    "30032 CABLE COAXIL RG6 QUADSHIELD NEGRO con PORTANTE",
+    "30032 CABLE COAXIL RG6 QUADSHIELD NEGRO CON PORTANTE",
     "31025 PRECINTO PLÁSTICO NEGRO (150 X 5.5 MM) , CON PROTE",
     "31026 TARUGO DE 8MM PARA LADRILLO HUECO",
     "31027 PITON CON TOPE PARA TARUGO DE 8MM",
@@ -98,9 +101,9 @@ with st.form("formulario_pedido", clear_on_submit=True):
                 })
                 st.rerun()
             else:
-                st.error("Mínimo 1")
+                st.error("La cantidad debe ser mayor a 0.")
         except ValueError:
-            st.error("Escribe un número válido")
+            st.error("Por favor, ingresa un número válido.")
 
 # --- RESUMEN Y ENVÍO ---
 if st.session_state.carrito:
@@ -119,7 +122,7 @@ if st.session_state.carrito:
                 # 1. Guardar Pedidos
                 try:
                     existente = conn.read(worksheet="Pedidos", ttl=0).dropna(how='all')
-                except:
+                except Exception:
                     existente = pd.DataFrame(columns=["Tecnico", "Codigo", "Articulo", "Cantidad"])
                 
                 actualizado = pd.concat([existente, df_pedido], ignore_index=True)
@@ -128,7 +131,7 @@ if st.session_state.carrito:
                 # 2. Registrar Bloqueo
                 try:
                     auth_ex = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
-                except:
+                except Exception:
                     auth_ex = pd.DataFrame(columns=["Email", "Estado"])
                 
                 nuevo_b = pd.DataFrame([{"Email": st.session_state.email_usuario, "Estado": "Bloqueado"}])
@@ -136,7 +139,8 @@ if st.session_state.carrito:
                 conn.update(worksheet="Autorizaciones", data=auth_act)
                 
                 st.balloons()
-                st.success("✅ Pedido enviado. Acceso bloqueado hasta nueva autorización.")
+                st.success("✅ Pedido enviado. Acceso bloqueado.")
                 st.session_state.carrito = []
                 st.rerun()
             except Exception as e:
+                st.error(f"Error al procesar: {e}")
