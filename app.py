@@ -159,8 +159,8 @@ def cambiar_seccion(nueva):
         st.session_state.seccion = nueva
 
 PERMISOS = {
-    "Materiales": ["3333333", "11111111", "1111111"],
-    "Herramientas": ["3333333", "33333333", "1111111"],
+    "Materiales": ["3333333", "11111111", "1111111111"],
+    "Herramientas": ["3333333", "33333333", "111111111"],
     "Indumentaria": ["3333333", "55555555"],
     "Libreria": ["3333333", "1111111"],
     "Limpieza": ["3333333", "1111111"]
