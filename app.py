@@ -284,28 +284,27 @@ with tab2:
                 st.rerun()
         
         if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
-            with st.spinner("Enviando..."):
+            with st.spinner("Procesando envío (esperando turno de red)..."):
                 try:
-                    # 1. Guardar el pedido
                     df_new = pd.DataFrame(st.session_state.carrito)
-                    df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
-                    conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new], ignore_index=True))
                     
-                    # 2. Bloquear en autorizaciones (Solo si es Materiales)
+                    # 1. Guardar el pedido usando el Sistema de Reintento (Punto 7)
+                    enviar_con_reintento(st.session_state.seccion, df_new)
+                    
+                    # 2. Bloquear en autorizaciones (Solo si es Materiales) con reintento también
                     if st.session_state.seccion == "Materiales":
                         df_up = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
-                        # Modificamos solo la fila que corresponde sin borrar el resto
                         for idx_auth, row_auth in df_up.iterrows():
                             if limpiar_dni(row_auth['DNI']) == dni_actual:
                                 df_up.at[idx_auth, 'Estado'] = "bloqueado"
-                                # No hacemos break por si el usuario está duplicado en la lista
                         
+                        # Actualización segura de autorizaciones
                         conn.update(worksheet="Autorizaciones", data=df_up)
 
-                    st.success("✅ Pedido enviado.")
+                    st.success("✅ Pedido enviado con éxito.")
                     st.session_state.carrito = []
                     time.sleep(1.5)
                     cambiar_seccion("Menu")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Error crítico al enviar: {e}")
+                    st.error(f"El servidor está ocupado. Intenta enviar de nuevo en unos segundos. (Error: {e})")
