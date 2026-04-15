@@ -155,14 +155,13 @@ if not st.session_state.autenticado:
         if c2.button("Registrarme", use_container_width=True): st.session_state.modo_registro = True; st.rerun()
     st.stop()
 
-# 5. MENÚ PRINCIPAL (SECCIÓN MODIFICADA)
+# 5. MENÚ PRINCIPAL (SECCIÓN MODIFICADA PARA OCULTAR BOTONES)
 def cambiar_seccion(nueva):
     if st.session_state.seccion != nueva:
         st.session_state.carrito = []
         st.session_state.seccion = nueva
 
 # --- CONFIGURACIÓN DE PERMISOS POR DNI ---
-# Agrega aquí los DNI (como strings) que tienen permiso para cada sector
 PERMISOS = {
     "Materiales": ["12345678", "1111111", "22222222"],
     "Herramientas": ["12345678", "33333333", "44444444"],
@@ -176,61 +175,67 @@ nombre_completo = f"{st.session_state.datos_usuario.get('Nombre')} {st.session_s
 
 if st.session_state.seccion == "Menu":
     st.title("🏢 Panel de Control")
-    st.write(f"Operador: **{nombre_completo}**")
+    st.info(f"Sesión iniciada: **{nombre_completo}** (DNI: {dni_actual})")
     
-    # 1. CASO ESPECIAL: ADMINISTRADOR (DNI 1111111) O LIBRERÍA/LIMPIEZA
-    if dni_actual in PERMISOS["Libreria"] or dni_actual in PERMISOS["Limpieza"]:
+    # --- 1. SECCIÓN ADMINISTRATIVA (Solo si tiene permiso) ---
+    tiene_libreria = dni_actual in PERMISOS["Libreria"]
+    tiene_limpieza = dni_actual in PERMISOS["Limpieza"]
+
+    if tiene_libreria or tiene_limpieza:
         st.subheader("📦 Gestión Administrativa")
-        c1, c2 = st.columns(2)
-        
-        # Botón Librería
-        if dni_actual in PERMISOS["Libreria"]:
-            if c1.button("📚\nLIBRERÍA", use_container_width=True): 
+        cols_admin = st.columns(2)
+        if tiene_libreria:
+            if cols_admin[0].button("📚\nLIBRERÍA", use_container_width=True):
                 cambiar_seccion("Insumos_Libreria"); st.rerun()
-        
-        # Botón Limpieza
-        if dni_actual in PERMISOS["Limpieza"]:
-            if c2.button("🧼\nLIMPIEZA", use_container_width=True): 
+        if tiene_limpieza:
+            if cols_admin[1].button("🧼\nLIMPIEZA", use_container_width=True):
                 cambiar_seccion("Insumos_Limpieza"); st.rerun()
-        
         st.divider()
 
-    # 2. SECTORES OPERATIVOS
-    st.subheader("🛠️ Sectores Operativos")
-    c1, c2, c3 = st.columns(3)
+    # --- 2. SECCIÓN OPERATIVA ---
+    st.subheader("🛠️ Sectores Disponibles")
+    
+    # Creamos las columnas solo para los botones que el usuario PUEDE ver
+    # Esto evita huecos vacíos si el usuario no tiene acceso a algo intermedio
+    cols_op = st.columns(3)
+    col_index = 0
 
-    # --- LÓGICA DE BOTÓN: MATERIALES ---
+    # Lógica Materiales
     if dni_actual in PERMISOS["Materiales"]:
-        # Verificamos si además del DNI, cumple el horario y no está bloqueado en Sheets
-        df_auth = conn.read(worksheet="Autorizaciones", ttl=0)
-        df_auth['DNI_STR'] = df_auth['DNI'].astype(str).str.split('.').str[0].str.strip()
-        auth_row = df_auth[df_auth['DNI_STR'] == dni_actual]
-        es_ok = not auth_row.empty and str(auth_row.iloc[0].get('Estado', '')).lower() == "ok"
+        with cols_op[col_index]:
+            df_auth = conn.read(worksheet="Autorizaciones", ttl=0)
+            df_auth['DNI_STR'] = df_auth['DNI'].astype(str).str.split('.').str[0].str.strip()
+            auth_row = df_auth[df_auth['DNI_STR'] == dni_actual]
+            es_ok = not auth_row.empty and str(auth_row.iloc[0].get('Estado', '')).lower() == "ok"
 
-        if not es_horario_permitido():
-            c1.button("🔒\nMATERIALES\n(Fuera de Horario)", disabled=True, use_container_width=True)
-        elif not es_ok:
-            c1.button("🚫\nMATERIALES\n(Bloqueado)", disabled=True, use_container_width=True)
-        else:
-            if c1.button("📦\nMATERIALES", use_container_width=True): 
-                cambiar_seccion("Materiales"); st.rerun()
-    else:
-        c1.button("🔒\nMATERIALES\n(No Autorizado)", disabled=True, use_container_width=True)
+            if not es_horario_permitido():
+                st.button("🔒\nMAT. (Fuera de Horario)", disabled=True, use_container_width=True)
+            elif not es_ok:
+                st.button("🚫\nMAT. (Bloqueado)", disabled=True, use_container_width=True)
+            else:
+                if st.button("📦\nMATERIALES", use_container_width=True):
+                    cambiar_seccion("Materiales"); st.rerun()
+        col_index += 1
 
-    # --- LÓGICA DE BOTÓN: HERRAMIENTAS ---
+    # Lógica Herramientas
     if dni_actual in PERMISOS["Herramientas"]:
-        if c2.button("🔧\nHERRAMIENTAS", use_container_width=True): 
-            cambiar_seccion("Herramientas"); st.rerun()
-    else:
-        c2.button("🔒\nHERRAMIENTAS\n(No Autorizado)", disabled=True, use_container_width=True)
+        with cols_op[col_index]:
+            if st.button("🔧\nHERRAMIENTAS", use_container_width=True):
+                cambiar_seccion("Herramientas"); st.rerun()
+        col_index += 1
 
-    # --- LÓGICA DE BOTÓN: INDUMENTARIA ---
+    # Lógica Indumentaria
     if dni_actual in PERMISOS["Indumentaria"]:
-        if c3.button("👕\nINDUMENTARIA", use_container_width=True): 
-            cambiar_seccion("Indumentaria"); st.rerun()
-    else:
-        c3.button("🔒\nINDUMENTARIA\n(No Autorizado)", disabled=True, use_container_width=True)
+        with cols_op[col_index]:
+            if st.button("👕\nINDUMENTARIA", use_container_width=True):
+                cambiar_seccion("Indumentaria"); st.rerun()
+        col_index += 1
+    
+    # Si no tiene acceso a NADA
+    if col_index == 0 and not (tiene_libreria or tiene_limpieza):
+        st.warning("Usted no tiene permisos asignados para ningún sector. Contacte al administrador.")
 
+    st.write("---")
     if st.button("Cerrar Sesión"):
         st.session_state.autenticado = False
         st.rerun()
