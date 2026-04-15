@@ -163,11 +163,11 @@ def cambiar_seccion(nueva):
 
 # --- CONFIGURACIÓN DE PERMISOS POR DNI ---
 PERMISOS = {
-    "Materiales": ["3333333", "1111111", "22222222"],
+    "Materiales": ["3333333", "11111111", "22222222"],
     "Herramientas": ["3333333", "33333333", "44444444"],
     "Indumentaria": ["3333333", "55555555"],
-    "Libreria": ["3333333", "99999999"],
-    "Limpieza": ["3333333", "88888888"]
+    "Libreria": ["3333333", "1111111"],
+    "Limpieza": ["3333333", "1111111"]
 }
 
 dni_actual = str(st.session_state.datos_usuario.get('DNI', '')).split(".")[0].strip()
