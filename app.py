@@ -224,8 +224,13 @@ if st.session_state.seccion == "Menu":
 st.button("⬅️ Menú", on_click=lambda: cambiar_seccion("Menu"))
 st.subheader(f"📍 Sector: {st.session_state.seccion}")
 
-# Listas de items (Mantenido igual)
-listas = {"Materiales": ["13008 | CONTROL", "30032 | CABLE"], "Herramientas": ["ALICATE"]}
+listas = {
+    "Materiales": ["13008 | CONTROL", "30032 | CABLE", "31025 | PRECINTO"],
+    "Herramientas": ["PINZA DE PUNTA", "ALICATE", "DESTORNILLADOR PH"],
+    "Indumentaria": ["PANTALON T.40", "CHOMBA L", "BOTINES"],
+    "Insumos_Libreria": ["Resma A4", "Lapicera Azul"],
+    "Insumos_Limpieza": ["Lavandina 5L", "Detergente"]
+}
 items = listas.get(st.session_state.seccion, [])
 
 tab1, tab2 = st.tabs(["📝 REGISTRAR", "📋 RESUMEN"])
@@ -234,36 +239,73 @@ with tab1:
     with st.form("f_registro", clear_on_submit=True):
         sel = st.selectbox("Elegir Artículo:", items)
         cant = st.number_input("Cantidad:", min_value=1, step=1, value=1)
-        if st.form_submit_button("AGREGAR AL RESUMEN"):
+        motivo = ""
+        if st.session_state.seccion in ["Herramientas", "Indumentaria"]:
+            motivo = st.selectbox("Motivo:", ["Desgaste", "Perdido", "Nunca entregado"])
+            
+        if st.form_submit_button("AGREGAR AL RESUMEN", use_container_width=True):
             articulo_limpio = sel.split(" | ")[-1] if " | " in sel else sel
-            st.session_state.carrito.append({
-                "ID_Interno": str(uuid.uuid4())[:8],
-                "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                "DNI": dni_actual,
-                "Articulo": articulo_limpio, 
-                "Cantidad": int(cant)
-            })
-            st.rerun()
+            if any(i['Articulo'] == articulo_limpio for i in st.session_state.carrito):
+                st.warning("El artículo ya está en el resumen.")
+            else:
+                cod_e = sel.split(" | ")[0] if " | " in sel else ""
+                st.session_state.carrito.append({
+                    "ID_Interno": str(uuid.uuid4())[:8],
+                    "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                    "Email": st.session_state.datos_usuario.get('Email'),
+                    "Nombre": st.session_state.datos_usuario.get('Nombre'),
+                    "Apellido": st.session_state.datos_usuario.get('Apellido'),
+                    "DNI": dni_actual,
+                    "Codigo": cod_e,
+                    "Articulo": articulo_limpio, 
+                    "Cantidad": int(cant), 
+                    "Motivo": motivo
+                })
+                st.rerun()
 
 with tab2:
     if not st.session_state.carrito:
         st.info("Resumen vacío.")
     else:
-        # Mostrar carrito...
-        st.write(pd.DataFrame(st.session_state.carrito))
+        h1, h2, h3, h4 = st.columns([0.7, 1.2, 5.5, 0.6])
+        h1.markdown('<div class="header-box">CT</div>', unsafe_allow_html=True)
+        h2.markdown('<div class="header-box">COD</div>', unsafe_allow_html=True)
+        h3.markdown('<div class="header-box">DESCRIPCIÓN</div>', unsafe_allow_html=True)
+        h4.markdown('<div class="header-box">.</div>', unsafe_allow_html=True)
+        
+        for idx, item in enumerate(st.session_state.carrito):
+            r1, r2, r3, r4 = st.columns([0.7, 1.2, 5.5, 0.6])
+            r1.markdown(f'<div class="cell-data" style="text-align:center; padding-top:5px;">{item["Cantidad"]}</div>', unsafe_allow_html=True)
+            r2.markdown(f'<div class="cell-data" style="color:blue; padding-top:5px;">{item["Codigo"]}</div>', unsafe_allow_html=True)
+            m_txt = f" - <span style='color:orange;'>{item['Motivo']}</span>" if item['Motivo'] else ""
+            r3.markdown(f'<div class="cell-data" style="padding-top:5px;">{item["Articulo"]}{m_txt}</div>', unsafe_allow_html=True)
+            if r4.button(".", key=f"del_{idx}", use_container_width=True):
+                st.session_state.carrito.pop(idx)
+                st.rerun()
         
         if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
             with st.spinner("Enviando..."):
                 try:
+                    # 1. Guardar el pedido
                     df_new = pd.DataFrame(st.session_state.carrito)
+                    df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
+                    conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new], ignore_index=True))
                     
-                    # LLAMADA A LA FUNCIÓN DE REINTENTO (Ya definida arriba)
-                    enviar_con_reintento(st.session_state.seccion, df_new)
-                    
-                    st.success("✅ Pedido enviado con éxito.")
+                    # 2. Bloquear en autorizaciones (Solo si es Materiales)
+                    if st.session_state.seccion == "Materiales":
+                        df_up = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+                        # Modificamos solo la fila que corresponde sin borrar el resto
+                        for idx_auth, row_auth in df_up.iterrows():
+                            if limpiar_dni(row_auth['DNI']) == dni_actual:
+                                df_up.at[idx_auth, 'Estado'] = "bloqueado"
+                                # No hacemos break por si el usuario está duplicado en la lista
+                        
+                        conn.update(worksheet="Autorizaciones", data=df_up)
+
+                    st.success("✅ Pedido enviado.")
                     st.session_state.carrito = []
                     time.sleep(1.5)
                     cambiar_seccion("Menu")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Error al enviar: {e}")
+                    st.error(f"Error crítico al enviar: {e}")
