@@ -313,7 +313,11 @@ listas = {
         "PANTALON 62",
     ],
     "Insumos_Libreria": [
-        "BOLSON HIGENICO",
+        "Resma A4", 
+        "Lapicera Azul"
+    ],
+    "Insumos_Limpieza": [
+        "BOLSON HIGIENICO",
         "BOLSA RESIDUO 100x110",
         "DESODORANTE PISOS FLORES DE PRIMAVERA",
         "JABON LIQUIDO - Jazmin o similar",
@@ -333,9 +337,8 @@ listas = {
         "MATA CUCARACHAS",
         "Trapo de Piso",
         "Mopa",
-        "Secador de piso + palo mediano",
-        ],
-    "Insumos_Limpieza": ["Lavandina 5L", "Detergente"]
+        "Secador de piso + palo mediano"
+    ],
 }
 items = listas.get(st.session_state.seccion, [])
 
