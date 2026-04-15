@@ -6,7 +6,6 @@ import pytz
 import time
 import re
 import uuid
-import random
 
 # 1. CONFIGURACIÓN DE PÁGINA Y CSS
 st.set_page_config(page_title="SGM - Gestión de Pedidos", page_icon="🏢", layout="wide")
@@ -51,6 +50,10 @@ def es_horario_permitido():
     ahora = datetime.now(tz_ba)
     return 7 <= ahora.hour < 15
 
+# Función crítica: Limpia el DNI de cualquier formato (.0, espacios, etc)
+def limpiar_dni(valor):
+    return str(valor).split('.')[0].replace(" ", "").strip()
+
 # 3. ESTADOS DE SESIÓN
 if 'autenticado' not in st.session_state: st.session_state.autenticado = False
 if 'modo_registro' not in st.session_state: st.session_state.modo_registro = False
@@ -66,7 +69,8 @@ if not st.session_state.autenticado:
     if st.session_state.reestablecer:
         st.title("🔑 Asignar Acceso")
         user = st.session_state.user_a_reestablecer
-        st.info(f"Usuario: {user.get('Nombre')} {user.get('Apellido')} (DNI: {str(user['DNI']).split('.')[0]})")
+        dni_limpio_user = limpiar_dni(user['DNI'])
+        st.info(f"Usuario: {user.get('Nombre')} {user.get('Apellido')} (DNI: {dni_limpio_user})")
         
         with st.form("form_reset"):
             n_mail = st.text_input("Asignar Email:").strip().lower()
@@ -80,21 +84,20 @@ if not st.session_state.autenticado:
                 elif len(cel_limpio) != 10: st.error("⚠️ El celular debe tener 10 dígitos.")
                 elif nueva_p != confirm_p: st.error("⚠️ Las contraseñas no coinciden.")
                 else:
-                    df_db = conn.read(worksheet="DB_Tecnicos", ttl=0)
-                    for col in ['Email', 'Contrasena', 'Celular']:
-                        df_db[col] = df_db[col].astype(str).replace('nan', '')
+                    df_db = conn.read(worksheet="DB_Tecnicos", ttl=0).dropna(how='all')
+                    # Buscamos por DNI limpio para no fallar
+                    idx = -1
+                    for i, row in df_db.iterrows():
+                        if limpiar_dni(row['DNI']) == dni_limpio_user:
+                            idx = i
+                            break
                     
-                    df_db['DNI_STR'] = df_db['DNI'].astype(str).str.split('.').str[0].str.strip()
-                    dni_target = str(user['DNI']).split('.')[0].strip()
-                    idx_list = df_db.index[df_db['DNI_STR'] == dni_target].tolist()
-                    
-                    if idx_list:
-                        idx = idx_list[0]
-                        df_db.loc[idx, 'Contrasena'] = str(nueva_p)
-                        df_db.loc[idx, 'Email'] = str(n_mail)
-                        df_db.loc[idx, 'Celular'] = str(cel_limpio)
-                        conn.update(worksheet="DB_Tecnicos", data=df_db.drop(columns=['DNI_STR']))
-                        registrar_log(f"{user.get('Nombre')} {user.get('Apellido')}", dni_target, "REGISTRO_EXITOSO", "Acceso", "Cuenta activada")
+                    if idx != -1:
+                        df_db.at[idx, 'Contrasena'] = str(nueva_p)
+                        df_db.at[idx, 'Email'] = str(n_mail)
+                        df_db.at[idx, 'Celular'] = str(cel_limpio)
+                        conn.update(worksheet="DB_Tecnicos", data=df_db)
+                        registrar_log(f"{user.get('Nombre')} {user.get('Apellido')}", dni_limpio_user, "REGISTRO_EXITOSO", "Acceso", "Cuenta activada")
                         st.success("✅ Cuenta activada.")
                         st.session_state.reestablecer = False
                         time.sleep(2); st.rerun()
@@ -104,21 +107,21 @@ if not st.session_state.autenticado:
         with st.form("form_padron"):
             dni_input = st.text_input("DNI (Sin puntos):").strip().replace(".", "")
             if st.form_submit_button("VERIFICAR PADRÓN"):
-                df_db = conn.read(worksheet="DB_Tecnicos", ttl=0)
-                df_db['DNI_STR'] = df_db['DNI'].astype(str).str.split('.').str[0].str.strip()
-                match = df_db[df_db['DNI_STR'] == dni_input]
-                
-                if not match.empty:
-                    pass_existente = str(match.iloc[0].get('Contrasena', '')).strip().lower()
-                    if pass_existente not in ["", "nan", "none"]:
-                        st.error("⚠️ Este DNI ya tiene una cuenta activa.")
-                    else:
-                        st.session_state.user_a_reestablecer = match.iloc[0].to_dict()
-                        st.session_state.reestablecer = True
-                        st.session_state.modo_registro = False
-                        st.rerun()
-                else: 
-                    st.error("🚫 DNI no encontrado.")
+                df_db = conn.read(worksheet="DB_Tecnicos", ttl=0).dropna(how='all')
+                encontrado = False
+                for _, row in df_db.iterrows():
+                    if limpiar_dni(row['DNI']) == dni_input:
+                        encontrado = True
+                        pass_existente = str(row.get('Contrasena', '')).strip().lower()
+                        if pass_existente not in ["", "nan", "none"]:
+                            st.error("⚠️ Este DNI ya tiene una cuenta activa.")
+                        else:
+                            st.session_state.user_a_reestablecer = row.to_dict()
+                            st.session_state.reestablecer = True
+                            st.session_state.modo_registro = False
+                            st.rerun()
+                        break
+                if not encontrado: st.error("🚫 DNI no encontrado.")
         if st.button("⬅️ Volver"): st.session_state.modo_registro = False; st.rerun()
 
     else:
@@ -127,17 +130,21 @@ if not st.session_state.autenticado:
         u_pass = st.text_input("Contraseña:", type="password").strip()
         c1, c2 = st.columns(2)
         if c1.button("Ingresar", use_container_width=True):
-            db = conn.read(worksheet="DB_Tecnicos", ttl=0)
-            db['DNI_STR'] = db['DNI'].astype(str).str.split('.').str[0].str.strip()
-            user_match = db[(db['Email'].astype(str).str.lower() == u_id) | (db['DNI_STR'] == u_id)]
-            if not user_match.empty:
-                real_pass = str(user_match.iloc[0].get('Contrasena', '')).strip()
+            db = conn.read(worksheet="DB_Tecnicos", ttl=0).dropna(how='all')
+            user_match = None
+            for _, row in db.iterrows():
+                if str(row['Email']).lower() == u_id or limpiar_dni(row['DNI']) == u_id:
+                    user_match = row
+                    break
+            
+            if user_match is not None:
+                real_pass = str(user_match.get('Contrasena', '')).strip()
                 if real_pass.lower() in ["", "nan", "none"]:
-                    st.session_state.user_a_reestablecer = user_match.iloc[0].to_dict()
+                    st.session_state.user_a_reestablecer = user_match.to_dict()
                     st.session_state.reestablecer = True; st.rerun()
                 elif real_pass == u_pass:
                     st.session_state.autenticado = True
-                    st.session_state.datos_usuario = user_match.iloc[0].to_dict()
+                    st.session_state.datos_usuario = user_match.to_dict()
                     registrar_log(f"{st.session_state.datos_usuario.get('Nombre')} {st.session_state.datos_usuario.get('Apellido')}", u_id, "LOGIN_EXITOSO", "Acceso")
                     st.rerun()
                 else: st.error("Contraseña incorrecta.")
@@ -159,7 +166,7 @@ PERMISOS = {
     "Limpieza": ["3333333", "1111111"]
 }
 
-dni_actual = str(st.session_state.datos_usuario.get('DNI', '')).split(".")[0].strip()
+dni_actual = limpiar_dni(st.session_state.datos_usuario.get('DNI', ''))
 nombre_completo = f"{st.session_state.datos_usuario.get('Nombre')} {st.session_state.datos_usuario.get('Apellido')}"
 
 if st.session_state.seccion == "Menu":
@@ -182,15 +189,26 @@ if st.session_state.seccion == "Menu":
                         if st.button("🧼\nLIMPIEZA", use_container_width=True): cambiar_seccion("Insumos_Limpieza"); st.rerun()
                     elif sector == "Materiales":
                         try:
-                            df_auth = conn.read(worksheet="Autorizaciones", ttl=0)
-                            df_auth['DNI_STR'] = df_auth['DNI'].astype(str).str.split('.').str[0].str.strip()
-                            auth_row = df_auth[df_auth['DNI_STR'] == dni_actual]
-                            es_ok = not auth_row.empty and str(auth_row.iloc[0].get('Estado', '')).lower() == "ok"
-                            if not es_horario_permitido(): st.button("🔒\nMAT. (Horario)", disabled=True, use_container_width=True)
-                            elif not es_ok: st.button("🚫\nMAT. (Bloqueado)", disabled=True, use_container_width=True)
+                            # Lógica de Autorización robusta
+                            df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+                            # Buscamos si existe el DNI y si su estado es OK
+                            autorizado = False
+                            for _, row in df_auth.iterrows():
+                                if limpiar_dni(row['DNI']) == dni_actual and str(row.get('Estado', '')).lower() == "ok":
+                                    autorizado = True
+                                    break
+                            
+                            if not es_horario_permitido(): 
+                                st.button("🔒\nMAT. (Horario)", disabled=True, use_container_width=True)
+                            elif not autorizado: 
+                                st.button("🚫\nMAT. (Bloqueado)", disabled=True, use_container_width=True)
                             else:
-                                if st.button("📦\nMATERIALES", use_container_width=True): cambiar_seccion("Materiales"); st.rerun()
-                        except: st.error("Error en Autorizaciones")
+                                if st.button("📦\nMATERIALES", use_container_width=True): 
+                                    cambiar_seccion("Materiales")
+                                    st.rerun()
+                        except Exception as e: 
+                            st.error(f"Error en Autorizaciones: {e}")
+                    
                     elif sector == "Herramientas":
                         if st.button("🔧\nHERRAMIENTAS", use_container_width=True): cambiar_seccion("Herramientas"); st.rerun()
                     elif sector == "Indumentaria":
@@ -206,7 +224,6 @@ if st.session_state.seccion == "Menu":
 st.button("⬅️ Menú", on_click=lambda: cambiar_seccion("Menu"))
 st.subheader(f"📍 Sector: {st.session_state.seccion}")
 
-# Listas con formato CÓDIGO | DESCRIPCIÓN para Materiales
 listas = {
     "Materiales": ["13008 | CONTROL", "30032 | CABLE", "31025 | PRECINTO"],
     "Herramientas": ["PINZA DE PUNTA", "ALICATE", "DESTORNILLADOR PH"],
@@ -227,13 +244,11 @@ with tab1:
             motivo = st.selectbox("Motivo:", ["Rotura", "Desgaste", "Perdido", "Nunca entregado"])
             
         if st.form_submit_button("AGREGAR AL RESUMEN", use_container_width=True):
-            if any(i['Articulo'] == sel.split(" | ")[-1] for i in st.session_state.carrito):
+            articulo_limpio = sel.split(" | ")[-1] if " | " in sel else sel
+            if any(i['Articulo'] == articulo_limpio for i in st.session_state.carrito):
                 st.warning("El artículo ya está en el resumen.")
             else:
-                # Lógica de separación de código
                 cod_e = sel.split(" | ")[0] if " | " in sel else ""
-                art_e = sel.split(" | ")[-1] if " | " in sel else sel
-                
                 st.session_state.carrito.append({
                     "ID_Interno": str(uuid.uuid4())[:8],
                     "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M"),
@@ -242,7 +257,7 @@ with tab1:
                     "Apellido": st.session_state.datos_usuario.get('Apellido'),
                     "DNI": dni_actual,
                     "Codigo": cod_e,
-                    "Articulo": art_e, 
+                    "Articulo": articulo_limpio, 
                     "Cantidad": int(cant), 
                     "Motivo": motivo
                 })
@@ -271,29 +286,26 @@ with tab2:
         if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
             with st.spinner("Enviando..."):
                 try:
+                    # 1. Guardar el pedido
                     df_new = pd.DataFrame(st.session_state.carrito)
-                    # Intento de lectura con manejo de error
-                    try:
-                        df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
-                    except:
-                        st.error(f"Error: No existe la pestaña '{st.session_state.seccion}' en el Sheet.")
-                        st.stop()
-                        
+                    df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
                     conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new], ignore_index=True))
                     
+                    # 2. Bloquear en autorizaciones (Solo si es Materiales)
                     if st.session_state.seccion == "Materiales":
-                        df_up = conn.read(worksheet="Autorizaciones", ttl=0)
-                        df_up['DNI_STR'] = df_up['DNI'].astype(str).str.split('.').str[0].str.strip()
-                        idx_auth = df_up.index[df_up['DNI_STR'] == dni_actual].tolist()
-                        if idx_auth:
-                            df_up.at[idx_auth[0], 'Estado'] = "bloqueado"
-                            conn.update(worksheet="Autorizaciones", data=df_up.drop(columns=['DNI_STR']))
+                        df_up = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+                        # Modificamos solo la fila que corresponde sin borrar el resto
+                        for idx_auth, row_auth in df_up.iterrows():
+                            if limpiar_dni(row_auth['DNI']) == dni_actual:
+                                df_up.at[idx_auth, 'Estado'] = "bloqueado"
+                                # No hacemos break por si el usuario está duplicado en la lista
+                        
+                        conn.update(worksheet="Autorizaciones", data=df_up)
 
                     st.success("✅ Pedido enviado.")
                     st.session_state.carrito = []
-                    time.sleep(1.5); cambiar_seccion("Menu"); st.rerun()
+                    time.sleep(1.5)
+                    cambiar_seccion("Menu")
+                    st.rerun()
                 except Exception as e:
-                    st.error(f"Error crítico: {e}")
-            
-
-            
+                    st.error(f"Error crítico al enviar: {e}")
