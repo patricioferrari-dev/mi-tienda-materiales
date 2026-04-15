@@ -234,7 +234,7 @@ if st.session_state.seccion == "Menu":
     
     st.stop()
 
-# 6. PANEL DE CARGA (Sigue igual que el original)
+# 6. PANEL DE CARGA (MODIFICADO PARA RESUMEN COMPACTO)
 st.button("⬅️ Menú", on_click=lambda: cambiar_seccion("Menu"))
 st.subheader(f"📍 Sector: {st.session_state.seccion}")
 
@@ -278,22 +278,33 @@ with tab2:
     if not st.session_state.carrito:
         st.info("Resumen vacío.")
     else:
-        h1, h2, h3 = st.columns([1, 6, 0.8])
+        # Cabecera ultra compacta
+        h1, h2, h3 = st.columns([0.8, 7, 0.6])
         h1.markdown('<div class="header-box">CANT</div>', unsafe_allow_html=True)
-        h2.markdown('<div class="header-box">DESCRIPCIÓN / MOTIVO</div>', unsafe_allow_html=True)
-        h3.markdown('<div class="header-box">ELIM</div>', unsafe_allow_html=True)
+        h2.markdown('<div class="header-box">DESCRIPCIÓN</div>', unsafe_allow_html=True)
+        h3.markdown('<div class="header-box">.</div>', unsafe_allow_html=True)
         
+        # Iteración de items sin espacios intermedios
         for idx, item in enumerate(st.session_state.carrito):
-            r1, r2, r3 = st.columns([1, 6, 0.8])
-            r1.markdown(f'<div class="cell-data" style="text-align:center">{item["Cantidad"]}</div>', unsafe_allow_html=True)
-            m_txt = f" ({item.get('Motivo', '')})" if item.get('Motivo') else ""
-            r2.markdown(f'<div class="cell-data">{item["Articulo"]}{m_txt} <br><small style="color:gray">ID: {item["ID_Interno"]}</small></div>', unsafe_allow_html=True)
-            if r3.button("X", key=f"del_{idx}"):
-                st.session_state.carrito.pop(idx); st.rerun()
+            r1, r2, r3 = st.columns([0.8, 7, 0.6])
+            
+            with r1:
+                st.markdown(f'<div class="cell-data" style="text-align:center; padding-top:5px;">{item["Cantidad"]}</div>', unsafe_allow_html=True)
+            
+            with r2:
+                m_txt = f" - <span style='color:orange; font-weight:bold;'>{item.get('Motivo', '')}</span>" if item.get('Motivo') else ""
+                st.markdown(f'<div class="cell-data" style="padding-top:5px;">{item["Articulo"]}{m_txt}</div>', unsafe_allow_html=True)
+            
+            with r3:
+                # Botón ultra pequeño con un punto
+                if st.button(".", key=f"del_{idx}", help="Eliminar", use_container_width=True):
+                    st.session_state.carrito.pop(idx)
+                    st.rerun()
         
+        st.write("") # Pequeño espacio antes del botón final
         if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
-            with st.spinner("Sincronizando con la base de datos..."):
-                time.sleep(random.uniform(0.1, 1.5)) 
+            with st.spinner("Enviando..."):
+                time.sleep(random.uniform(0.5, 1.2)) 
                 df_new = pd.DataFrame(st.session_state.carrito)
                 df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
                 conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new], ignore_index=True))
@@ -310,5 +321,5 @@ with tab2:
 
             st.success("✅ Pedido enviado correctamente.")
             st.session_state.carrito = []
-            time.sleep(2); cambiar_seccion("Menu"); st.rerun()
+            time.sleep(1.5); cambiar_seccion("Menu"); st.rerun()
             
