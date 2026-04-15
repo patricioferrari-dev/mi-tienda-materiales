@@ -48,11 +48,12 @@ def es_email_valido(email):
     return re.match(patron, email) is not None
 
 def es_horario_permitido():
+    """Valida si el horario actual en Argentina está entre las 07:00 y las 15:00."""
     tz_ba = pytz.timezone('America/Argentina/Buenos_Aires')
     ahora = datetime.now(tz_ba)
-    dia_semana = ahora.weekday() 
     hora_actual = ahora.hour
-    return dia_semana in [0, 2, 4] and 7 <= hora_actual < 15
+    # Habilitado de 07:00:00 a 14:59:59
+    return 7 <= hora_actual < 15
 
 # 3. ESTADOS DE SESIÓN
 if 'autenticado' not in st.session_state: st.session_state.autenticado = False
@@ -178,18 +179,19 @@ if st.session_state.seccion == "Menu":
         auth_row = df_auth[df_auth['DNI_STR'] == dni_actual]
         es_ok = not auth_row.empty and str(auth_row.iloc[0].get('Estado', '')).lower() == "ok"
 
+        # VALIDACIÓN DE ACCESO A MATERIALES
         if not es_horario_permitido():
-            c1.button("🔒\nMAT. CERRADO", disabled=True)
+            c1.button("🔒\nFUERA DE HORARIO\n(07 a 15hs)", disabled=True, use_container_width=True)
         elif not es_ok:
-            c1.button("🚫\nBLOQUEADO", disabled=True)
+            c1.button("🚫\nBLOQUEADO", disabled=True, use_container_width=True)
         else:
-            if c1.button("📦\nMATERIALES"): cambiar_seccion("Materiales"); st.rerun()
+            if c1.button("📦\nMATERIALES", use_container_width=True): cambiar_seccion("Materiales"); st.rerun()
             
-        if c2.button("🔧\nHERRAMIENTAS"): cambiar_seccion("Herramientas"); st.rerun()
-        if c3.button("👕\nINDUMENTARIA"): cambiar_seccion("Indumentaria"); st.rerun()
+        if c2.button("🔧\nHERRAMIENTAS", use_container_width=True): cambiar_seccion("Herramientas"); st.rerun()
+        if c3.button("👕\nINDUMENTARIA", use_container_width=True): cambiar_seccion("Indumentaria"); st.rerun()
     st.stop()
 
-# 6. PANEL DE CARGA
+# 6. PANEL DE CARGA (Sigue igual que el original)
 st.button("⬅️ Menú", on_click=lambda: cambiar_seccion("Menu"))
 st.subheader(f"📍 Sector: {st.session_state.seccion}")
 
@@ -218,7 +220,6 @@ with tab1:
             if any(i['Articulo'] == sel for i in st.session_state.carrito):
                 st.warning(f"El artículo {sel} ya está en el resumen.")
             else:
-                # PASO 2: Se genera un ID único para cada artículo en el carrito
                 st.session_state.carrito.append({
                     "ID_Interno": str(uuid.uuid4())[:8],
                     "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M"),
@@ -248,19 +249,12 @@ with tab2:
                 st.session_state.carrito.pop(idx); st.rerun()
         
         if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
-            with st.spinner("Sincronizando con la base de datos de forma segura..."):
-                
-                # --- PASO 2: ANTI-COLISIÓN (RETRASO ALEATORIO) ---
-                # Esto escalona las entradas si dos personas envían al mismo tiempo
+            with st.spinner("Sincronizando con la base de datos..."):
                 time.sleep(random.uniform(0.1, 1.5)) 
-                
-                # Guardar pedido
                 df_new = pd.DataFrame(st.session_state.carrito)
-                # Volvemos a leer para asegurar que tenemos la versión más fresca antes de concatenar
                 df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
                 conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new], ignore_index=True))
                 
-                # Auditoría del pedido
                 registrar_log(nombre_completo, dni_actual, "ENVIO_PEDIDO", st.session_state.seccion, f"Items: {len(st.session_state.carrito)}")
 
                 if st.session_state.seccion == "Materiales":
@@ -270,8 +264,8 @@ with tab2:
                     if idx_auth:
                         df_up.at[idx_auth[0], 'Estado'] = "bloqueado"
                         conn.update(worksheet="Autorizaciones", data=df_up.drop(columns=['DNI_STR']))
-                        registrar_log(nombre_completo, dni_actual, "BLOQUEO_AUTO", "Autorizaciones", "Acceso a materiales revocado post-pedido")
 
             st.success("✅ Pedido enviado correctamente.")
             st.session_state.carrito = []
             time.sleep(2); cambiar_seccion("Menu"); st.rerun()
+            
