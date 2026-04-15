@@ -50,6 +50,7 @@ def es_horario_permitido():
     ahora = datetime.now(tz_ba)
     return 7 <= ahora.hour < 15
 
+# Función crítica: Limpia el DNI de cualquier formato (.0, espacios, etc)
 def limpiar_dni(valor):
     return str(valor).split('.')[0].replace(" ", "").strip()
 
@@ -84,11 +85,13 @@ if not st.session_state.autenticado:
                 elif nueva_p != confirm_p: st.error("⚠️ Las contraseñas no coinciden.")
                 else:
                     df_db = conn.read(worksheet="DB_Tecnicos", ttl=0).dropna(how='all')
+                    # Buscamos por DNI limpio para no fallar
                     idx = -1
                     for i, row in df_db.iterrows():
                         if limpiar_dni(row['DNI']) == dni_limpio_user:
                             idx = i
                             break
+                    
                     if idx != -1:
                         df_db.at[idx, 'Contrasena'] = str(nueva_p)
                         df_db.at[idx, 'Email'] = str(n_mail)
@@ -133,6 +136,7 @@ if not st.session_state.autenticado:
                 if str(row['Email']).lower() == u_id or limpiar_dni(row['DNI']) == u_id:
                     user_match = row
                     break
+            
             if user_match is not None:
                 real_pass = str(user_match.get('Contrasena', '')).strip()
                 if real_pass.lower() in ["", "nan", "none"]:
@@ -185,17 +189,26 @@ if st.session_state.seccion == "Menu":
                         if st.button("🧼\nLIMPIEZA", use_container_width=True): cambiar_seccion("Insumos_Limpieza"); st.rerun()
                     elif sector == "Materiales":
                         try:
+                            # Lógica de Autorización robusta
                             df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+                            # Buscamos si existe el DNI y si su estado es OK
                             autorizado = False
                             for _, row in df_auth.iterrows():
                                 if limpiar_dni(row['DNI']) == dni_actual and str(row.get('Estado', '')).lower() == "ok":
                                     autorizado = True
                                     break
-                            if not es_horario_permitido(): st.button("🔒\nMAT. (Horario)", disabled=True, use_container_width=True)
-                            elif not autorizado: st.button("🚫\nMAT. (Bloqueado)", disabled=True, use_container_width=True)
+                            
+                            if not es_horario_permitido(): 
+                                st.button("🔒\nMAT. (Horario)", disabled=True, use_container_width=True)
+                            elif not autorizado: 
+                                st.button("🚫\nMAT. (Bloqueado)", disabled=True, use_container_width=True)
                             else:
-                                if st.button("📦\nMATERIALES", use_container_width=True): cambiar_seccion("Materiales"); st.rerun()
-                        except: st.error("Error en Autorizaciones")
+                                if st.button("📦\nMATERIALES", use_container_width=True): 
+                                    cambiar_seccion("Materiales")
+                                    st.rerun()
+                        except Exception as e: 
+                            st.error(f"Error en Autorizaciones: {e}")
+                    
                     elif sector == "Herramientas":
                         if st.button("🔧\nHERRAMIENTAS", use_container_width=True): cambiar_seccion("Herramientas"); st.rerun()
                     elif sector == "Indumentaria":
@@ -226,26 +239,9 @@ with tab1:
     with st.form("f_registro", clear_on_submit=True):
         sel = st.selectbox("Elegir Artículo:", items)
         cant = st.number_input("Cantidad:", min_value=1, step=1, value=1)
-        
-        # --- LÓGICA DE MOTIVOS SEPARADA ---
         motivo = ""
-        if st.session_state.seccion == "Herramientas":
-            motivo = st.selectbox("Motivo del pedido:", [
-                "Rotura en obra", 
-                "Desgaste por uso", 
-                "Extravío/Robo", 
-                "Falla técnica/Defecto",
-                "Reposición"
-            ])
-        elif st.session_state.seccion == "Indumentaria":
-            motivo = st.selectbox("Motivo del pedido:", [
-                "Cambio de talle", 
-                "Desgaste natural", 
-                "Prenda dañada", 
-                "Renovación (Cumplimiento de tiempo)",
-                "Ingreso de personal"
-            ])
-        # ----------------------------------
+        if st.session_state.seccion in ["Herramientas", "Indumentaria"]:
+            motivo = st.selectbox("Motivo:", ["Rotura", "Desgaste", "Perdido", "Nunca entregado"])
             
         if st.form_submit_button("AGREGAR AL RESUMEN", use_container_width=True):
             articulo_limpio = sel.split(" | ")[-1] if " | " in sel else sel
@@ -290,19 +286,26 @@ with tab2:
         if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
             with st.spinner("Enviando..."):
                 try:
+                    # 1. Guardar el pedido
                     df_new = pd.DataFrame(st.session_state.carrito)
                     df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
                     conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new], ignore_index=True))
                     
+                    # 2. Bloquear en autorizaciones (Solo si es Materiales)
                     if st.session_state.seccion == "Materiales":
                         df_up = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+                        # Modificamos solo la fila que corresponde sin borrar el resto
                         for idx_auth, row_auth in df_up.iterrows():
                             if limpiar_dni(row_auth['DNI']) == dni_actual:
                                 df_up.at[idx_auth, 'Estado'] = "bloqueado"
+                                # No hacemos break por si el usuario está duplicado en la lista
+                        
                         conn.update(worksheet="Autorizaciones", data=df_up)
 
                     st.success("✅ Pedido enviado.")
                     st.session_state.carrito = []
-                    time.sleep(1.5); cambiar_seccion("Menu"); st.rerun()
+                    time.sleep(1.5)
+                    cambiar_seccion("Menu")
+                    st.rerun()
                 except Exception as e:
                     st.error(f"Error crítico al enviar: {e}")
