@@ -50,7 +50,6 @@ def es_horario_permitido():
     ahora = datetime.now(tz_ba)
     return 7 <= ahora.hour < 15
 
-# Función crítica: Limpia el DNI de cualquier formato (.0, espacios, etc)
 def limpiar_dni(valor):
     return str(valor).split('.')[0].replace(" ", "").strip()
 
@@ -85,7 +84,6 @@ if not st.session_state.autenticado:
                 elif nueva_p != confirm_p: st.error("⚠️ Las contraseñas no coinciden.")
                 else:
                     df_db = conn.read(worksheet="DB_Tecnicos", ttl=0).dropna(how='all')
-                    # Buscamos por DNI limpio para no fallar
                     idx = -1
                     for i, row in df_db.iterrows():
                         if limpiar_dni(row['DNI']) == dni_limpio_user:
@@ -189,9 +187,7 @@ if st.session_state.seccion == "Menu":
                         if st.button("🧼\nLIMPIEZA", use_container_width=True): cambiar_seccion("Insumos_Limpieza"); st.rerun()
                     elif sector == "Materiales":
                         try:
-                            # Lógica de Autorización robusta
                             df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
-                            # Buscamos si existe el DNI y si su estado es OK
                             autorizado = False
                             for _, row in df_auth.iterrows():
                                 if limpiar_dni(row['DNI']) == dni_actual and str(row.get('Estado', '')).lower() == "ok":
@@ -284,33 +280,10 @@ listas = {
         "TALADRO PERCUTOR BOSCH"
     ],
     "Indumentaria": [
-        "REMERA S",
-        "REMERA M",
-        "REMERA L",
-        "REMERA XL",
-        "REMERA XXL",
-        "REMERA XXXL",
-        "REMERA XXXXL",
-        "BUZO S",
-        "BUZO M",
-        "BUZO L",
-        "BUZO XL",
-        "BUZO XXL",
-        "BUZO XXXL",
-        "BUZO XXXXL",
-        "PANTALON 38",
-        "PANTALON 40",
-        "PANTALON 42",
-        "PANTALON 44",
-        "PANTALON 46",
-        "PANTALON 48",
-        "PANTALON 50",
-        "PANTALON 52",
-        "PANTALON 54",
-        "PANTALON 56",
-        "PANTALON 58",
-        "PANTALON 60",
-        "PANTALON 62",
+        "REMERA S", "REMERA M", "REMERA L", "REMERA XL", "REMERA XXL", "REMERA XXXL", "REMERA XXXXL",
+        "BUZO S", "BUZO M", "BUZO L", "BUZO XL", "BUZO XXL", "BUZO XXXL", "BUZO XXXXL",
+        "PANTALON 38", "PANTALON 40", "PANTALON 42", "PANTALON 44", "PANTALON 46", "PANTALON 48",
+        "PANTALON 50", "PANTALON 52", "PANTALON 54", "PANTALON 56", "PANTALON 58", "PANTALON 60", "PANTALON 62",
     ],
     "Insumos_Libreria": [
         "Resma A4", 
@@ -358,9 +331,14 @@ with tab1:
                 st.warning("El artículo ya está en el resumen.")
             else:
                 cod_e = sel.split(" | ")[0] if " | " in sel else ""
+                
+                # CORRECCIÓN DE HORA AQUÍ
+                tz_ba = pytz.timezone('America/Argentina/Buenos_Aires')
+                ahora_ba = datetime.now(tz_ba).strftime("%d/%m/%Y %H:%M")
+
                 st.session_state.carrito.append({
                     "ID_Interno": str(uuid.uuid4())[:8],
-                    "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                    "Fecha": ahora_ba, 
                     "Email": st.session_state.datos_usuario.get('Email'),
                     "Nombre": st.session_state.datos_usuario.get('Nombre'),
                     "Apellido": st.session_state.datos_usuario.get('Apellido'),
@@ -395,19 +373,15 @@ with tab2:
         if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
             with st.spinner("Enviando..."):
                 try:
-                    # 1. Guardar el pedido
                     df_new = pd.DataFrame(st.session_state.carrito)
                     df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
                     conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new], ignore_index=True))
                     
-                    # 2. Bloquear en autorizaciones (Solo si es Materiales)
                     if st.session_state.seccion == "Materiales":
                         df_up = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
-                        # Modificamos solo la fila que corresponde sin borrar el resto
                         for idx_auth, row_auth in df_up.iterrows():
                             if limpiar_dni(row_auth['DNI']) == dni_actual:
                                 df_up.at[idx_auth, 'Estado'] = "bloqueado"
-                                # No hacemos break por si el usuario está duplicado en la lista
                         
                         conn.update(worksheet="Autorizaciones", data=df_up)
 
