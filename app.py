@@ -260,7 +260,7 @@ listas = {
         "ANTEOJO DE SEGURIDAD",
         "BOLSO STANLEY 16' PORTAHERRAMIENTAS",
         "CADENA PARA ESCALERA",
-        "CANDADO INTERSTAL",
+        "CANDADO",
         "CARGADOR DE CELULAR",
         "CASCO DE SEGURIDAD",
         "CELULAR MOTO E5",
@@ -319,9 +319,9 @@ listas = {
     "Insumos_Limpieza": [
         "BOLSON HIGIENICO",
         "BOLSA RESIDUO 100x110",
-        "DESODORANTE PISOS FLORES DE PRIMAVERA",
-        "JABON LIQUIDO - Jazmin o similar",
-        "LAVANDINA CONCENTRADA",
+        "DESODORANTE PISOS FLORES DE PRIMAVERA 5L",
+        "JABON LIQUIDO 5L",
+        "LAVANDINA CONCENTRADA 5L",
         "ESPONJA MORTIMER CUADRICULADA",
         "DESODORANTE DE AMBIENTE EN AEROSOL",
         "PASTILLA INODORO",
@@ -334,10 +334,10 @@ listas = {
         "VALLERINA",
         "CIF BAÑO POWER CREAM GATILLO",
         "Limpiador Liquido Desinfectante Lysoform",
-        "MATA CUCARACHAS",
+        "Mata Cucarachas",
         "Trapo de Piso",
         "Mopa",
-        "Secador de piso + palo mediano"
+        "Secador de piso + Palo mediano"
     ],
 }
 items = listas.get(st.session_state.seccion, [])
