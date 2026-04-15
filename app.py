@@ -153,7 +153,7 @@ def cambiar_seccion(nueva):
 
 PERMISOS = {
     "Materiales": ["3333333", "11111111", "22222222"],
-    "Herramientas": ["3333333", "33333333", "44444444"],
+    "Herramientas": ["3333333", "33333333", "1111111"],
     "Indumentaria": ["3333333", "55555555"],
     "Libreria": ["3333333", "1111111"],
     "Limpieza": ["3333333", "1111111"]
