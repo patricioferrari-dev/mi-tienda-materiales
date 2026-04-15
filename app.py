@@ -241,7 +241,7 @@ with tab1:
         cant = st.number_input("Cantidad:", min_value=1, step=1, value=1)
         motivo = ""
         if st.session_state.seccion in ["Herramientas", "Indumentaria"]:
-            motivo = st.selectbox("Motivo:", ["Rotura", "Desgaste", "Perdido", "Nunca entregado"])
+            motivo = st.selectbox("Motivo:", ["Desgaste", "Perdido", "Nunca entregado"])
             
         if st.form_submit_button("AGREGAR AL RESUMEN", use_container_width=True):
             articulo_limpio = sel.split(" | ")[-1] if " | " in sel else sel
