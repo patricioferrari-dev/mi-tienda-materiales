@@ -5,8 +5,8 @@ from datetime import datetime
 import pytz
 import time
 import re
-import uuid   # Para generar IDs únicos
-import random # Para el retraso aleatorio
+import uuid
+import random
 
 # 1. CONFIGURACIÓN DE PÁGINA Y CSS
 st.set_page_config(page_title="SGM - Gestión de Pedidos", page_icon="🏢", layout="wide")
@@ -26,7 +26,6 @@ st.markdown("""
 
 # 2. FUNCIONES DE VALIDACIÓN Y AUDITORÍA
 def registrar_log(usuario, dni, evento, seccion="-", detalle="-"):
-    """Registra eventos en la hoja 'Logs' para auditoría profesional."""
     try:
         tz_ba = pytz.timezone('America/Argentina/Buenos_Aires')
         ahora = datetime.now(tz_ba).strftime("%d/%m/%Y %H:%M:%S")
@@ -48,12 +47,9 @@ def es_email_valido(email):
     return re.match(patron, email) is not None
 
 def es_horario_permitido():
-    """Valida si el horario actual en Argentina está entre las 07:00 y las 15:00."""
     tz_ba = pytz.timezone('America/Argentina/Buenos_Aires')
     ahora = datetime.now(tz_ba)
-    hora_actual = ahora.hour
-    # Habilitado de 07:00:00 a 14:59:59
-    return 7 <= hora_actual < 15
+    return 7 <= ahora.hour < 15
 
 # 3. ESTADOS DE SESIÓN
 if 'autenticado' not in st.session_state: st.session_state.autenticado = False
@@ -98,7 +94,7 @@ if not st.session_state.autenticado:
                         df_db.loc[idx, 'Email'] = str(n_mail)
                         df_db.loc[idx, 'Celular'] = str(cel_limpio)
                         conn.update(worksheet="DB_Tecnicos", data=df_db.drop(columns=['DNI_STR']))
-                        registrar_log(f"{user.get('Nombre')} {user.get('Apellido')}", dni_target, "REGISTRO_EXITOSO", "Acceso", "Cuenta activada por primera vez")
+                        registrar_log(f"{user.get('Nombre')} {user.get('Apellido')}", dni_target, "REGISTRO_EXITOSO", "Acceso", "Cuenta activada")
                         st.success("✅ Cuenta activada.")
                         st.session_state.reestablecer = False
                         time.sleep(2); st.rerun()
@@ -115,7 +111,6 @@ if not st.session_state.autenticado:
                 if not match.empty:
                     pass_existente = str(match.iloc[0].get('Contrasena', '')).strip().lower()
                     if pass_existente not in ["", "nan", "none"]:
-                        registrar_log("Anónimo", dni_input, "INTENTO_DUPLICADO", "Registro", "Usuario ya existente intentó registrarse de nuevo")
                         st.error("⚠️ Este DNI ya tiene una cuenta activa.")
                     else:
                         st.session_state.user_a_reestablecer = match.iloc[0].to_dict()
@@ -123,7 +118,6 @@ if not st.session_state.autenticado:
                         st.session_state.modo_registro = False
                         st.rerun()
                 else: 
-                    registrar_log("Anónimo", dni_input, "DNI_NO_ENCONTRADO", "Registro", "Intento de registro con DNI fuera de padrón")
                     st.error("🚫 DNI no encontrado.")
         if st.button("⬅️ Volver"): st.session_state.modo_registro = False; st.rerun()
 
@@ -146,22 +140,17 @@ if not st.session_state.autenticado:
                     st.session_state.datos_usuario = user_match.iloc[0].to_dict()
                     registrar_log(f"{st.session_state.datos_usuario.get('Nombre')} {st.session_state.datos_usuario.get('Apellido')}", u_id, "LOGIN_EXITOSO", "Acceso")
                     st.rerun()
-                else: 
-                    registrar_log("Anónimo", u_id, "PASS_INCORRECTO", "Acceso")
-                    st.error("Contraseña incorrecta.")
-            else:
-                registrar_log("Anónimo", u_id, "USER_NO_EXISTE", "Acceso")
-                st.error("Usuario no encontrado.")
+                else: st.error("Contraseña incorrecta.")
+            else: st.error("Usuario no encontrado.")
         if c2.button("Registrarme", use_container_width=True): st.session_state.modo_registro = True; st.rerun()
     st.stop()
 
-# 5. MENÚ PRINCIPAL (SECCIÓN UNIFICADA)
+# 5. MENÚ PRINCIPAL
 def cambiar_seccion(nueva):
     if st.session_state.seccion != nueva:
         st.session_state.carrito = []
         st.session_state.seccion = nueva
 
-# --- CONFIGURACIÓN DE PERMISOS POR DNI ---
 PERMISOS = {
     "Materiales": ["3333333", "11111111", "22222222"],
     "Herramientas": ["3333333", "33333333", "44444444"],
@@ -175,71 +164,51 @@ nombre_completo = f"{st.session_state.datos_usuario.get('Nombre')} {st.session_s
 
 if st.session_state.seccion == "Menu":
     st.title("🏢 Panel de Control")
-    st.info(f"Sesión iniciada: **{nombre_completo}** (DNI: {dni_actual})")
+    st.info(f"Sesión iniciada: **{nombre_completo}**")
     
-    st.subheader("📦 Gestión Administrativa y Operativa")
-    
-    # 1. Detectar a qué tiene acceso el usuario para crear las columnas exactas
-    accesos_reales = []
-    for sector, lista_dnis in PERMISOS.items():
-        if dni_actual in lista_dnis:
-            accesos_reales.append(sector)
+    accesos_reales = [sector for sector, dnis in PERMISOS.items() if dni_actual in dnis]
 
     if not accesos_reales:
-        st.warning("⚠️ No tienes permisos asignados. Contacta al administrador.")
+        st.warning("⚠️ Sin permisos asignados.")
     else:
-        # Creamos dinámicamente el número de columnas según la cantidad de accesos
-        # (Máximo 3 por fila para que no se vean amontonados en móvil)
         filas = [accesos_reales[i:i + 3] for i in range(0, len(accesos_reales), 3)]
-        
         for fila in filas:
-            cols = st.columns(3) # Mantenemos 3 para consistencia visual
+            cols = st.columns(3)
             for i, sector in enumerate(fila):
                 with cols[i]:
                     if sector == "Libreria":
-                        if st.button("📚\nLIBRERÍA", use_container_width=True):
-                            cambiar_seccion("Insumos_Libreria"); st.rerun()
-                    
+                        if st.button("📚\nLIBRERÍA", use_container_width=True): cambiar_seccion("Insumos_Libreria"); st.rerun()
                     elif sector == "Limpieza":
-                        if st.button("🧼\nLIMPIEZA", use_container_width=True):
-                            cambiar_seccion("Insumos_Limpieza"); st.rerun()
-                    
+                        if st.button("🧼\nLIMPIEZA", use_container_width=True): cambiar_seccion("Insumos_Limpieza"); st.rerun()
                     elif sector == "Materiales":
-                        # Lógica especial de bloqueo para Materiales
-                        df_auth = conn.read(worksheet="Autorizaciones", ttl=0)
-                        df_auth['DNI_STR'] = df_auth['DNI'].astype(str).str.split('.').str[0].str.strip()
-                        auth_row = df_auth[df_auth['DNI_STR'] == dni_actual]
-                        es_ok = not auth_row.empty and str(auth_row.iloc[0].get('Estado', '')).lower() == "ok"
-
-                        if not es_horario_permitido():
-                            st.button("🔒\nMAT. (Fuera de Horario)", disabled=True, use_container_width=True)
-                        elif not es_ok:
-                            st.button("🚫\nMAT. (Bloqueado)", disabled=True, use_container_width=True)
-                        else:
-                            if st.button("📦\nMATERIALES", use_container_width=True):
-                                cambiar_seccion("Materiales"); st.rerun()
-                    
+                        try:
+                            df_auth = conn.read(worksheet="Autorizaciones", ttl=0)
+                            df_auth['DNI_STR'] = df_auth['DNI'].astype(str).str.split('.').str[0].str.strip()
+                            auth_row = df_auth[df_auth['DNI_STR'] == dni_actual]
+                            es_ok = not auth_row.empty and str(auth_row.iloc[0].get('Estado', '')).lower() == "ok"
+                            if not es_horario_permitido(): st.button("🔒\nMAT. (Horario)", disabled=True, use_container_width=True)
+                            elif not es_ok: st.button("🚫\nMAT. (Bloqueado)", disabled=True, use_container_width=True)
+                            else:
+                                if st.button("📦\nMATERIALES", use_container_width=True): cambiar_seccion("Materiales"); st.rerun()
+                        except: st.error("Error en Autorizaciones")
                     elif sector == "Herramientas":
-                        if st.button("🔧\nHERRAMIENTAS", use_container_width=True):
-                            cambiar_seccion("Herramientas"); st.rerun()
-                    
+                        if st.button("🔧\nHERRAMIENTAS", use_container_width=True): cambiar_seccion("Herramientas"); st.rerun()
                     elif sector == "Indumentaria":
-                        if st.button("👕\nINDUMENTARIA", use_container_width=True):
-                            cambiar_seccion("Indumentaria"); st.rerun()
+                        if st.button("👕\nINDUMENTARIA", use_container_width=True): cambiar_seccion("Indumentaria"); st.rerun()
 
     st.divider()
     if st.button("Cerrar Sesión"):
         st.session_state.autenticado = False
         st.rerun()
-    
     st.stop()
 
-# 6. PANEL DE CARGA (MODIFICADO PARA RESUMEN COMPACTO)
+# 6. PANEL DE CARGA
 st.button("⬅️ Menú", on_click=lambda: cambiar_seccion("Menu"))
 st.subheader(f"📍 Sector: {st.session_state.seccion}")
 
+# Listas con formato CÓDIGO | DESCRIPCIÓN para Materiales
 listas = {
-    "Materiales": ["13008 CONTROL", "30032 CABLE", "31025 PRECINTO"],
+    "Materiales": ["13008 | CONTROL", "30032 | CABLE", "31025 | PRECINTO"],
     "Herramientas": ["PINZA DE PUNTA", "ALICATE", "DESTORNILLADOR PH"],
     "Indumentaria": ["PANTALON T.40", "CHOMBA L", "BOTINES"],
     "Insumos_Libreria": ["Resma A4", "Lapicera Azul"],
@@ -254,15 +223,17 @@ with tab1:
         sel = st.selectbox("Elegir Artículo:", items)
         cant = st.number_input("Cantidad:", min_value=1, step=1, value=1)
         motivo = ""
-        if st.session_state.seccion == "Herramientas":
-            motivo = st.selectbox("Motivo:", ["Rotura", "Perdido", "Nunca entregado"])
-        elif st.session_state.seccion == "Indumentaria":
-            motivo = st.selectbox("Motivo:", ["Desgaste", "Nunca entregado"])
+        if st.session_state.seccion in ["Herramientas", "Indumentaria"]:
+            motivo = st.selectbox("Motivo:", ["Rotura", "Desgaste", "Perdido", "Nunca entregado"])
             
         if st.form_submit_button("AGREGAR AL RESUMEN", use_container_width=True):
-            if any(i['Articulo'] == sel for i in st.session_state.carrito):
-                st.warning(f"El artículo {sel} ya está en el resumen.")
+            if any(i['Articulo'] == sel.split(" | ")[-1] for i in st.session_state.carrito):
+                st.warning("El artículo ya está en el resumen.")
             else:
+                # Lógica de separación de código
+                cod_e = sel.split(" | ")[0] if " | " in sel else ""
+                art_e = sel.split(" | ")[-1] if " | " in sel else sel
+                
                 st.session_state.carrito.append({
                     "ID_Interno": str(uuid.uuid4())[:8],
                     "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M"),
@@ -270,7 +241,10 @@ with tab1:
                     "Nombre": st.session_state.datos_usuario.get('Nombre'),
                     "Apellido": st.session_state.datos_usuario.get('Apellido'),
                     "DNI": dni_actual,
-                    "Articulo": sel, "Cantidad": int(cant), "Motivo": motivo
+                    "Codigo": cod_e,
+                    "Articulo": art_e, 
+                    "Cantidad": int(cant), 
+                    "Motivo": motivo
                 })
                 st.rerun()
 
@@ -278,48 +252,46 @@ with tab2:
     if not st.session_state.carrito:
         st.info("Resumen vacío.")
     else:
-        # Cabecera ultra compacta
-        h1, h2, h3 = st.columns([0.8, 7, 0.6])
-        h1.markdown('<div class="header-box">CANT</div>', unsafe_allow_html=True)
-        h2.markdown('<div class="header-box">DESCRIPCIÓN</div>', unsafe_allow_html=True)
-        h3.markdown('<div class="header-box">.</div>', unsafe_allow_html=True)
+        h1, h2, h3, h4 = st.columns([0.7, 1.2, 5.5, 0.6])
+        h1.markdown('<div class="header-box">CT</div>', unsafe_allow_html=True)
+        h2.markdown('<div class="header-box">COD</div>', unsafe_allow_html=True)
+        h3.markdown('<div class="header-box">DESCRIPCIÓN</div>', unsafe_allow_html=True)
+        h4.markdown('<div class="header-box">.</div>', unsafe_allow_html=True)
         
-        # Iteración de items sin espacios intermedios
         for idx, item in enumerate(st.session_state.carrito):
-            r1, r2, r3 = st.columns([0.8, 7, 0.6])
-            
-            with r1:
-                st.markdown(f'<div class="cell-data" style="text-align:center; padding-top:5px;">{item["Cantidad"]}</div>', unsafe_allow_html=True)
-            
-            with r2:
-                m_txt = f" - <span style='color:orange; font-weight:bold;'>{item.get('Motivo', '')}</span>" if item.get('Motivo') else ""
-                st.markdown(f'<div class="cell-data" style="padding-top:5px;">{item["Articulo"]}{m_txt}</div>', unsafe_allow_html=True)
-            
-            with r3:
-                # Botón ultra pequeño con un punto
-                if st.button(".", key=f"del_{idx}", help="Eliminar", use_container_width=True):
-                    st.session_state.carrito.pop(idx)
-                    st.rerun()
+            r1, r2, r3, r4 = st.columns([0.7, 1.2, 5.5, 0.6])
+            r1.markdown(f'<div class="cell-data" style="text-align:center; padding-top:5px;">{item["Cantidad"]}</div>', unsafe_allow_html=True)
+            r2.markdown(f'<div class="cell-data" style="color:blue; padding-top:5px;">{item["Codigo"]}</div>', unsafe_allow_html=True)
+            m_txt = f" - <span style='color:orange;'>{item['Motivo']}</span>" if item['Motivo'] else ""
+            r3.markdown(f'<div class="cell-data" style="padding-top:5px;">{item["Articulo"]}{m_txt}</div>', unsafe_allow_html=True)
+            if r4.button(".", key=f"del_{idx}", use_container_width=True):
+                st.session_state.carrito.pop(idx)
+                st.rerun()
         
-        st.write("") # Pequeño espacio antes del botón final
         if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
             with st.spinner("Enviando..."):
-                time.sleep(random.uniform(0.5, 1.2)) 
-                df_new = pd.DataFrame(st.session_state.carrito)
-                df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
-                conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new], ignore_index=True))
-                
-                registrar_log(nombre_completo, dni_actual, "ENVIO_PEDIDO", st.session_state.seccion, f"Items: {len(st.session_state.carrito)}")
+                try:
+                    df_new = pd.DataFrame(st.session_state.carrito)
+                    # Intento de lectura con manejo de error
+                    try:
+                        df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
+                    except:
+                        st.error(f"Error: No existe la pestaña '{st.session_state.seccion}' en el Sheet.")
+                        st.stop()
+                        
+                    conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new], ignore_index=True))
+                    
+                    if st.session_state.seccion == "Materiales":
+                        df_up = conn.read(worksheet="Autorizaciones", ttl=0)
+                        df_up['DNI_STR'] = df_up['DNI'].astype(str).str.split('.').str[0].str.strip()
+                        idx_auth = df_up.index[df_up['DNI_STR'] == dni_actual].tolist()
+                        if idx_auth:
+                            df_up.at[idx_auth[0], 'Estado'] = "bloqueado"
+                            conn.update(worksheet="Autorizaciones", data=df_up.drop(columns=['DNI_STR']))
 
-                if st.session_state.seccion == "Materiales":
-                    df_up = conn.read(worksheet="Autorizaciones", ttl=0)
-                    df_up['DNI_STR'] = df_up['DNI'].astype(str).str.split('.').str[0].str.strip()
-                    idx_auth = df_up.index[df_up['DNI_STR'] == dni_actual].tolist()
-                    if idx_auth:
-                        df_up.at[idx_auth[0], 'Estado'] = "bloqueado"
-                        conn.update(worksheet="Autorizaciones", data=df_up.drop(columns=['DNI_STR']))
-
-            st.success("✅ Pedido enviado correctamente.")
-            st.session_state.carrito = []
-            time.sleep(1.5); cambiar_seccion("Menu"); st.rerun()
+                    st.success("✅ Pedido enviado.")
+                    st.session_state.carrito = []
+                    time.sleep(1.5); cambiar_seccion("Menu"); st.rerun()
+                except Exception as e:
+                    st.error(f"Error crítico: {e}")
             
