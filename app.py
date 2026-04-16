@@ -80,11 +80,9 @@ if not st.session_state.autenticado:
             nueva_p = st.text_input("Nueva Contraseña:", type="password")
             confirm_p = st.text_input("Confirmar Contraseña:", type="password")
             
-            # TODO este bloque debe estar DENTRO del 'with st.form'
-            btn_guardar = st.form_submit_button("GUARDAR Y ACTIVAR CUENTA")
-            
-            if btn_guardar:
-                cel_limpio = n_cel.replace(" ", "").replace("-", "")
+            if st.form_submit_button("GUARDAR Y ACTIVAR CUENTA"):
+                cel_limpio = n_cel.replace(" ", "").replace("-", "").replace(".", "")
+                
                 if not es_email_valido(n_mail): 
                     st.error("⚠️ Email no válido.")
                 elif len(cel_limpio) != 10: 
@@ -93,13 +91,15 @@ if not st.session_state.autenticado:
                     st.error("⚠️ Las contraseñas no coinciden.")
                 else:
                     with st.spinner("Actualizando base de datos..."):
+                        # Leemos la base de datos
                         df_db = conn.read(worksheet="DB_Tecnicos", ttl=0).dropna(how='all')
                         
-                        # Aseguramos que las columnas acepten texto ANTES de escribir
-                        df_db['Celular'] = df_db['Celular'].astype(str)
-                        df_db['DNI'] = df_db['DNI'].astype(str)
-                        df_db['Contrasena'] = df_db['Contrasena'].astype(str)
-
+                        # --- LIMPIEZA DE DECIMALES (.0) Y CONVERSIÓN A TEXTO ---
+                        for col in ['DNI', 'Celular', 'Contrasena']:
+                            if col in df_db.columns:
+                                df_db[col] = df_db[col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+                        
+                        # Buscamos el índice del usuario
                         idx = -1
                         for i, row in df_db.iterrows():
                             if limpiar_dni(row['DNI']) == dni_limpio_user:
@@ -107,18 +107,21 @@ if not st.session_state.autenticado:
                                 break
                         
                         if idx != -1:
+                            # Asignamos nuevos valores
                             df_db.at[idx, 'Contrasena'] = str(nueva_p)
                             df_db.at[idx, 'Email'] = str(n_mail)
                             df_db.at[idx, 'Celular'] = str(cel_limpio)
                             
+                            # Guardamos en Google Sheets
                             conn.update(worksheet="DB_Tecnicos", data=df_db)
+                            
                             registrar_log(f"{user.get('Nombre')} {user.get('Apellido')}", dni_limpio_user, "REGISTRO_EXITOSO", "Acceso", "Cuenta activada")
                             st.success("✅ Cuenta activada.")
                             st.session_state.reestablecer = False
                             time.sleep(2)
                             st.rerun()
                         else:
-                            st.error("No se pudo encontrar el registro original para actualizar.")
+                            st.error("❌ Error: No se encontró el DNI en la base para actualizar.")
 
     elif st.session_state.modo_registro:
         st.title("📝 Registro de Usuario")
@@ -139,7 +142,7 @@ if not st.session_state.autenticado:
                             st.session_state.modo_registro = False
                             st.rerun()
                         break
-                if not encontrado: st.error("🚫 DNI no encontrado.")
+                if not encontrado: st.error("🚫 DNI no encontrado en el padrón.")
         if st.button("⬅️ Volver"): 
             st.session_state.modo_registro = False
             st.rerun()
@@ -149,16 +152,22 @@ if not st.session_state.autenticado:
         u_id = st.text_input("Email o DNI:").strip().lower()
         u_pass = st.text_input("Contraseña:", type="password").strip()
         c1, c2 = st.columns(2)
+        
         if c1.button("Ingresar", use_container_width=True):
             db = conn.read(worksheet="DB_Tecnicos", ttl=0).dropna(how='all')
             user_match = None
+            
+            # Buscamos coincidencia por Email o DNI
             for _, row in db.iterrows():
-                if str(row.get('Email', '')).lower() == u_id or limpiar_dni(row.get('DNI', '')) == u_id:
+                email_db = str(row.get('Email', '')).lower().strip()
+                dni_db = limpiar_dni(row.get('DNI', ''))
+                if email_db == u_id or dni_db == u_id:
                     user_match = row
                     break
             
             if user_match is not None:
                 real_pass = str(user_match.get('Contrasena', '')).strip()
+                # Si no tiene contraseña, mandarlo a activar cuenta
                 if real_pass.lower() in ["", "nan", "none"]:
                     st.session_state.user_a_reestablecer = user_match.to_dict()
                     st.session_state.reestablecer = True
@@ -168,8 +177,11 @@ if not st.session_state.autenticado:
                     st.session_state.datos_usuario = user_match.to_dict()
                     registrar_log(f"{user_match.get('Nombre')} {user_match.get('Apellido')}", u_id, "LOGIN_EXITOSO", "Acceso")
                     st.rerun()
-                else: st.error("Contraseña incorrecta.")
-            else: st.error("Usuario no encontrado.")
+                else: 
+                    st.error("❌ Contraseña incorrecta.")
+            else: 
+                st.error("❌ Usuario no encontrado.")
+                
         if c2.button("Registrarme", use_container_width=True): 
             st.session_state.modo_registro = True
             st.rerun()
