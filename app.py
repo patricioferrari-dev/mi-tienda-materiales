@@ -333,12 +333,14 @@ with tab2:
     if not st.session_state.carrito:
         st.info("Resumen vacío.")
     else:
+        # Encabezados de la tabla
         h1, h2, h3, h4 = st.columns([0.7, 1.2, 5.5, 0.6])
         h1.markdown('<div class="header-box">CT</div>', unsafe_allow_html=True)
         h2.markdown('<div class="header-box">COD</div>', unsafe_allow_html=True)
         h3.markdown('<div class="header-box">DESCRIPCIÓN</div>', unsafe_allow_html=True)
         h4.markdown('<div class="header-box">.</div>', unsafe_allow_html=True)
         
+        # Renderizado del carrito actual
         for idx, item in enumerate(st.session_state.carrito):
             r1, r2, r3, r4 = st.columns([0.7, 1.2, 5.5, 0.6])
             r1.markdown(f'<div class="cell-data" style="text-align:center; padding-top:5px;">{item["Cantidad"]}</div>', unsafe_allow_html=True)
@@ -349,30 +351,56 @@ with tab2:
                 st.session_state.carrito.pop(idx)
                 st.rerun()
         
-        if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
-            with st.spinner("Enviando..."):
-                try:
-                    df_new = pd.DataFrame(st.session_state.carrito)
-                    # Forzamos DNI a string en los datos nuevos y viejos antes de concatenar
-                    df_new['DNI'] = df_new['DNI'].astype(str)
-                    
-                    df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
-                    if not df_old.empty:
-                        df_old['DNI'] = df_old['DNI'].astype(str)
+        st.divider()
 
-                    conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new], ignore_index=True))
+        # BOTÓN DE ENVÍO FINAL CON LÓGICA ANTI-SOBREESCRITURA
+        if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
+            with st.spinner("Sincronizando con el servidor..."):
+                try:
+                    # 1. Preparar datos nuevos del carrito
+                    df_new = pd.DataFrame(st.session_state.carrito)
                     
+                    # Limpiar posibles decimales en el DNI y Código antes de subir
+                    for col in ['DNI', 'Codigo']:
+                        if col in df_new.columns:
+                            df_new[col] = df_new[col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+
+                    # 2. RE-LECTURA CRÍTICA: Leemos lo que hay en la nube JUSTO AHORA
+                    # ttl=0 evita que Streamlit use datos viejos guardados en memoria
+                    df_actual_servidor = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
+                    
+                    if not df_actual_servidor.empty:
+                        # Limpiamos también la base actual por seguridad
+                        df_actual_servidor['DNI'] = df_actual_servidor['DNI'].astype(str).str.replace(r'\.0$', '', regex=True)
+
+                    # 3. UNIÓN DE DATOS: Pegamos lo nuevo al final de lo que ya existe en el servidor
+                    df_final = pd.concat([df_actual_servidor, df_new], ignore_index=True)
+                    
+                    # 4. SUBIDA: Actualizamos la hoja completa
+                    conn.update(worksheet=st.session_state.seccion, data=df_final)
+                    
+                    # 5. BLOQUEO DE AUTORIZACIÓN (Solo si es sección Materiales)
                     if st.session_state.seccion == "Materiales":
                         df_up = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+                        # Usamos el DNI del usuario actual para bloquearlo
+                        dni_usuario = limpiar_dni(st.session_state.datos_usuario.get('DNI', ''))
+                        
+                        # Marcamos como bloqueado en la copia local que acabamos de leer
                         for idx_auth, row_auth in df_up.iterrows():
-                            if limpiar_dni(row_auth['DNI']) == dni_actual:
+                            if limpiar_dni(row_auth['DNI']) == dni_usuario:
                                 df_up.at[idx_auth, 'Estado'] = "bloqueado"
+                                break # Ya lo encontramos, salimos del loop
+                        
+                        # Subimos la tabla de autorizaciones actualizada
                         conn.update(worksheet="Autorizaciones", data=df_up)
 
-                    st.success("✅ Pedido enviado.")
-                    st.session_state.carrito = []
+                    # 6. FINALIZACIÓN
+                    st.success("✅ Pedido enviado correctamente y registrado.")
+                    st.session_state.carrito = [] # Vaciamos el carrito local
                     time.sleep(1.5)
                     cambiar_seccion("Menu")
                     st.rerun()
+                    
                 except Exception as e:
-                    st.error(f"Error crítico al enviar: {e}")
+                    st.error(f"❌ Error al enviar el pedido: {e}")
+                    st.info("Intenta enviar nuevamente en unos segundos.")
