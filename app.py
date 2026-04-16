@@ -361,7 +361,7 @@ with tab2:
             else:
                 with st.spinner("Sincronizando con la central segura..."):
                     try:
-                        URL_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSe2Oa4_94zM_R7-02LpB6-95f-A8q97f-m2Rcia7S5YbZE9MKIKRVnC33rEPJJ2TCWGF9czi8xNjZo/formResponse"
+                        URL_FORM = "https://docs.google.com/forms/d/e/1Rcia7S5YbZE9MKIKRVnC33rEPJJ2TCWGF9czi8xNjZo/formResponse"
                         
                         # Headers para evitar el rechazo de Google
                         headers = {
