@@ -51,7 +51,10 @@ def es_horario_permitido():
     return 7 <= ahora.hour < 15
 
 def limpiar_dni(valor):
-    return str(valor).split('.')[0].replace(" ", "").strip()
+    if pd.isna(valor): return ""
+    # Convertimos a string, quitamos el .0 si es float y limpiamos espacios
+    v = str(valor).split('.')[0].replace(" ", "").strip()
+    return v
 
 # 3. ESTADOS DE SESIÓN
 if 'autenticado' not in st.session_state: st.session_state.autenticado = False
@@ -83,7 +86,10 @@ if not st.session_state.autenticado:
                 elif len(cel_limpio) != 10: st.error("⚠️ El celular debe tener 10 dígitos.")
                 elif nueva_p != confirm_p: st.error("⚠️ Las contraseñas no coinciden.")
                 else:
+                    # Forzamos DNI y Celular a string al leer
                     df_db = conn.read(worksheet="DB_Tecnicos", ttl=0).dropna(how='all')
+                    df_db['DNI'] = df_db['DNI'].astype(str)
+                    
                     idx = -1
                     for i, row in df_db.iterrows():
                         if limpiar_dni(row['DNI']) == dni_limpio_user:
@@ -131,6 +137,7 @@ if not st.session_state.autenticado:
             db = conn.read(worksheet="DB_Tecnicos", ttl=0).dropna(how='all')
             user_match = None
             for _, row in db.iterrows():
+                # Comparación segura convirtiendo a string
                 if str(row['Email']).lower() == u_id or limpiar_dni(row['DNI']) == u_id:
                     user_match = row
                     break
@@ -156,41 +163,11 @@ def cambiar_seccion(nueva):
         st.session_state.carrito = []
         st.session_state.seccion = nueva
 
+# (Tu diccionario de PERMISOS se mantiene igual aquí...)
 PERMISOS = {
-    "Materiales": [
-        "3333333", "11111111", "1111111111", "3855426", "34556566", "42617418", 
-        "43098136", "94715302", "44459597", "40777756", "94061021", "38327668", 
-        "94509310", "42375056", "37157151", "22543919", "33786801", "37702546", 
-        "29007778", "40244391", "31190690", "37015165", "32379681", "25627805", 
-        "94032245", "38512342", "39964904", "31891314", "39515561", "34705748", 
-        "95879282", "42572404", "41779740", "41917064", "25897847", "33915674", 
-        "37345461", "95859981", "35695574", "40979109", "42013818", "42046209", 
-        "43180923", "24768515", "41199185", "46108423", "38562170", "35773829", 
-        "42024623", "45356650", "38554456", "28764673", "38945380", "44822585"
-    ],
-    "Herramientas": [
-        "3333333", "33333333", "111111111", "11111111", "3855426", "34556566", 
-        "42617418", "43098136", "94715302", "44459597", "40777756", "94061021", 
-        "38327668", "94509310", "42375056", "37157151", "22543919", "33786801", 
-        "37702546", "29007778", "40244391", "31190690", "37015165", "32379681", 
-        "25627805", "94032245", "38512342", "39964904", "31891314", "39515561", 
-        "34705748", "95879282", "42572404", "41779740", "41917064", "25897847", 
-        "33915674", "37345461", "95859981", "35695574", "40979109", "42013818", 
-        "42046209", "43180923", "24768515", "41199185", "46108423", "38562170", 
-        "35773829", "42024623", "45356650", "38554456", "28764673", "38945380", 
-        "44822585"
-    ],
-    "Indumentaria": [
-        "3333333", "55555555", "11111111", "3855426", "34556566", "42617418", 
-        "43098136", "94715302", "44459597", "40777756", "94061021", "38327668", 
-        "94509310", "42375056", "37157151", "22543919", "33786801", "37702546", 
-        "29007778", "40244391", "31190690", "37015165", "32379681", "25627805", 
-        "94032245", "38512342", "39964904", "31891314", "39515561", "34705748", 
-        "95879282", "42572404", "41779740", "41917064", "25897847", "33915674", 
-        "37345461", "95859981", "35695574", "40979109", "42013818", "42046209", 
-        "43180923", "24768515", "41199185", "46108423", "38562170", "35773829", 
-        "42024623", "45356650", "38554456", "28764673", "38945380", "44822585"
-    ],
+    "Materiales": ["3333333", "11111111", "1111111111", "3855426", "34556566", "42617418", "43098136", "94715302", "44459597", "40777756", "94061021", "38327668", "94509310", "42375056", "37157151", "22543919", "33786801", "37702546", "29007778", "40244391", "31190690", "37015165", "32379681", "25627805", "94032245", "38512342", "39964904", "31891314", "39515561", "34705748", "95879282", "42572404", "41779740", "41917064", "25897847", "33915674", "37345461", "95859981", "35695574", "40979109", "42013818", "42046209", "43180923", "24768515", "41199185", "46108423", "38562170", "35773829", "42024623", "45356650", "38554456", "28764673", "38945380", "44822585"],
+    "Herramientas": ["3333333", "33333333", "111111111", "11111111", "3855426", "34556566", "42617418", "43098136", "94715302", "44459597", "40777756", "94061021", "38327668", "94509310", "42375056", "37157151", "22543919", "33786801", "37702546", "29007778", "40244391", "31190690", "37015165", "32379681", "25627805", "94032245", "38512342", "39964904", "31891314", "39515561", "34705748", "95879282", "42572404", "41779740", "41917064", "25897847", "33915674", "37345461", "95859981", "35695574", "40979109", "42013818", "42046209", "43180923", "24768515", "41199185", "46108423", "38562170", "35773829", "42024623", "45356650", "38554456", "28764673", "38945380", "44822585"],
+    "Indumentaria": ["3333333", "55555555", "11111111", "3855426", "34556566", "42617418", "43098136", "94715302", "44459597", "40777756", "94061021", "38327668", "94509310", "42375056", "37157151", "22543919", "33786801", "37702546", "29007778", "40244391", "31190690", "37015165", "32379681", "25627805", "94032245", "38512342", "39964904", "31891314", "39515561", "34705748", "95879282", "42572404", "41779740", "41917064", "25897847", "33915674", "37345461", "95859981", "35695574", "40979109", "42013818", "42046209", "43180923", "24768515", "41199185", "46108423", "38562170", "35773829", "42024623", "45356650", "38554456", "28764673", "38945380", "44822585"],
     "Libreria": ["3333333", "1111111"],
     "Limpieza": ["3333333", "1111111"]
 }
@@ -248,6 +225,7 @@ if st.session_state.seccion == "Menu":
     st.stop()
 
 # 6. PANEL DE CARGA
+# (El resto de tu código de listas e interfaz sigue aquí...)
 st.button("⬅️ Menú", on_click=lambda: cambiar_seccion("Menu"))
 st.subheader(f"📍 Sector: {st.session_state.seccion}")
 
@@ -281,68 +259,10 @@ listas = {
         "90090 | DIVISOR DE 2 BOCAS - SPLITTER X2",
         "90106 | FILTRO 102HR"
     ],
-    "Herramientas": [
-        "ALARGUE 10 MTS",
-        "ALICATE 8'' STANLEY",
-        "ANTEOJO DE SEGURIDAD",
-        "BOLSO STANLEY 16' PORTAHERRAMIENTAS",
-        "CADENA PARA ESCALERA",
-        "CANDADO",
-        "CARGADOR DE CELULAR",
-        "CASCO DE SEGURIDAD",
-        "CELULAR MOTO E5",
-        "CINTA PASACABLE 15MTS",
-        "CINTURON CON CABO DE VIDA",
-        "CONO",
-        "CRIMPEADORA RG6 RG11 COMPRESION",
-        "CUTTER",
-        "DESTORNILLADOR PHILLIP",
-        "DESTORNILLADOR PLANO 6X100MM",
-        "ESCALERA DIELECTRICA PARA POSTE 14 + 14 PELDAÑOS",
-        "LLAVE COMBINADA DE 7/16",
-        "MARTILLO",
-        "MECHA DE 10MM PASANTE",
-        "MECHA DE VIDIA 8MM",
-        "PELA CABLE COAXIAL",
-        "PINZA UNIVERSAL",
-        "PISTOLA CARTUCHO SILICONA",
-        "SACATRAMPAS",
-        "SIM CORPORATIVA",
-        "TALADRO PERCUTOR BOSCH"
-    ],
-    "Indumentaria": [
-        "REMERA S", "REMERA M", "REMERA L", "REMERA XL", "REMERA XXL", "REMERA XXXL", "REMERA XXXXL",
-        "BUZO S", "BUZO M", "BUZO L", "BUZO XL", "BUZO XXL", "BUZO XXXL", "BUZO XXXXL",
-        "PANTALON 38", "PANTALON 40", "PANTALON 42", "PANTALON 44", "PANTALON 46", "PANTALON 48",
-        "PANTALON 50", "PANTALON 52", "PANTALON 54", "PANTALON 56", "PANTALON 58", "PANTALON 60", "PANTALON 62",
-    ],
-    "Insumos_Libreria": [
-        "Resma A4", 
-        "Lapicera Azul"
-    ],
-    "Insumos_Limpieza": [
-        "BOLSON HIGIENICO",
-        "BOLSA RESIDUO 100x110",
-        "DESODORANTE PISOS FLORES DE PRIMAVERA 5L",
-        "JABON LIQUIDO 5L",
-        "LAVANDINA CONCENTRADA 5L",
-        "ESPONJA MORTIMER CUADRICULADA",
-        "DESODORANTE DE AMBIENTE EN AEROSOL",
-        "PASTILLA INODORO",
-        "TOALLA INTERCALADAS 20X24CM MANO",
-        "LUSTRAMUEBLES",
-        "FRANELA",
-        "REJILLA",
-        "GUANTES GRANDES N°10",
-        "BOLSA RESIDUO 50x70",
-        "VALLERINA",
-        "CIF BAÑO POWER CREAM GATILLO",
-        "Limpiador Liquido Desinfectante Lysoform",
-        "Mata Cucarachas",
-        "Trapo de Piso",
-        "Mopa",
-        "Secador de piso + Palo mediano"
-    ],
+    "Herramientas": ["ALARGUE 10 MTS", "ALICATE 8'' STANLEY", "ANTEOJO DE SEGURIDAD", "BOLSO STANLEY 16' PORTAHERRAMIENTAS", "CADENA PARA ESCALERA", "CANDADO", "CARGADOR DE CELULAR", "CASCO DE SEGURIDAD", "CELULAR MOTO E5", "CINTA PASACABLE 15MTS", "CINTURON CON CABO DE VIDA", "CONO", "CRIMPEADORA RG6 RG11 COMPRESION", "CUTTER", "DESTORNILLADOR PHILLIP", "DESTORNILLADOR PLANO 6X100MM", "ESCALERA DIELECTRICA PARA POSTE 14 + 14 PELDAÑOS", "LLAVE COMBINADA DE 7/16", "MARTILLO", "MECHA DE 10MM PASANTE", "MECHA DE VIDIA 8MM", "PELA CABLE COAXIAL", "PINZA UNIVERSAL", "PISTOLA CARTUCHO SILICONA", "SACATRAMPAS", "SIM CORPORATIVA", "TALADRO PERCUTOR BOSCH"],
+    "Indumentaria": ["REMERA S", "REMERA M", "REMERA L", "REMERA XL", "REMERA XXL", "REMERA XXXL", "REMERA XXXXL", "BUZO S", "BUZO M", "BUZO L", "BUZO XL", "BUZO XXL", "BUZO XXXL", "BUZO XXXXL", "PANTALON 38", "PANTALON 40", "PANTALON 42", "PANTALON 44", "PANTALON 46", "PANTALON 48", "PANTALON 50", "PANTALON 52", "PANTALON 54", "PANTALON 56", "PANTALON 58", "PANTALON 60", "PANTALON 62"],
+    "Insumos_Libreria": ["Resma A4", "Lapicera Azul"],
+    "Insumos_Limpieza": ["BOLSON HIGIENICO", "BOLSA RESIDUO 100x110", "DESODORANTE PISOS FLORES DE PRIMAVERA 5L", "JABON LIQUIDO 5L", "LAVANDINA CONCENTRADA 5L", "ESPONJA MORTIMER CUADRICULADA", "DESODORANTE DE AMBIENTE EN AEROSOL", "PASTILLA INODORO", "TOALLA INTERCALADAS 20X24CM MANO", "LUSTRAMUEBLES", "FRANELA", "REJILLA", "GUANTES GRANDES N°10", "BOLSA RESIDUO 50x70", "VALLERINA", "CIF BAÑO POWER CREAM GATILLO", "Limpiador Liquido Desinfectante Lysoform", "Mata Cucarachas", "Trapo de Piso", "Mopa", "Secador de piso + Palo mediano"],
 }
 items = listas.get(st.session_state.seccion, [])
 
@@ -362,8 +282,6 @@ with tab1:
                 st.warning("El artículo ya está en el resumen.")
             else:
                 cod_e = sel.split(" | ")[0] if " | " in sel else ""
-                
-                # CORRECCIÓN DE HORA AQUÍ
                 tz_ba = pytz.timezone('America/Argentina/Buenos_Aires')
                 ahora_ba = datetime.now(tz_ba).strftime("%d/%m/%Y %H:%M")
 
@@ -373,8 +291,8 @@ with tab1:
                     "Email": st.session_state.datos_usuario.get('Email'),
                     "Nombre": st.session_state.datos_usuario.get('Nombre'),
                     "Apellido": st.session_state.datos_usuario.get('Apellido'),
-                    "DNI": dni_actual,
-                    "Codigo": cod_e,
+                    "DNI": str(dni_actual),
+                    "Codigo": str(cod_e),
                     "Articulo": articulo_limpio, 
                     "Cantidad": int(cant), 
                     "Motivo": motivo
@@ -405,7 +323,13 @@ with tab2:
             with st.spinner("Enviando..."):
                 try:
                     df_new = pd.DataFrame(st.session_state.carrito)
+                    # Forzamos DNI a string en los datos nuevos y viejos antes de concatenar
+                    df_new['DNI'] = df_new['DNI'].astype(str)
+                    
                     df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
+                    if not df_old.empty:
+                        df_old['DNI'] = df_old['DNI'].astype(str)
+
                     conn.update(worksheet=st.session_state.seccion, data=pd.concat([df_old, df_new], ignore_index=True))
                     
                     if st.session_state.seccion == "Materiales":
@@ -413,7 +337,6 @@ with tab2:
                         for idx_auth, row_auth in df_up.iterrows():
                             if limpiar_dni(row_auth['DNI']) == dni_actual:
                                 df_up.at[idx_auth, 'Estado'] = "bloqueado"
-                        
                         conn.update(worksheet="Autorizaciones", data=df_up)
 
                     st.success("✅ Pedido enviado.")
