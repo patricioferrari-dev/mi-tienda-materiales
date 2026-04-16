@@ -361,9 +361,12 @@ with tab2:
             else:
                 with st.spinner("Sincronizando con la central segura..."):
                     try:
+                        # 1. URL Correcta
                         URL_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSe2Oa4_94zM_R7-02LpB6-95f-A8q97f-m2Rcia7S5YbZE9MKIKRVnC33rEPJJ2TCWGF9czi8xNjZo/formResponse"
-
+                        
                         exito_total = True
+                        
+                        # 2. Bucle de envío
                         for item in st.session_state.carrito:
                             payload = {
                                 "entry.2120464811": str(item["ID_Interno"]),
@@ -379,13 +382,14 @@ with tab2:
                                 "entry.40698285": str(st.session_state.seccion)
                             }
                             
-                            # Enviamos y esperamos máximo 10 segundos
+                            # Envío individual
                             r = requests.post(URL_FORM, data=payload, timeout=10)
                             if r.status_code != 200:
                                 exito_total = False
 
+                        # 3. Acciones post-envío (FUERA DEL BUCLE FOR)
                         if exito_total:
-                            # --- LÓGICA DE BLOQUEO SOLO SI ES MATERIALES ---
+                            # Lógica de bloqueo para materiales
                             if st.session_state.seccion == "Materiales":
                                 try:
                                     df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
