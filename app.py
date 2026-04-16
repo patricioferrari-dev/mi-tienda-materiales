@@ -356,52 +356,44 @@ with tab2:
 
         # BOTÓN DE ENVÍO FINAL CON LÓGICA ANTI-SOBREESCRITURA
         if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
-            with st.spinner("Enviando a la base de datos segura..."):
+            with st.spinner("Sincronizando con la central segura..."):
                 try:
-                    # 1. TU URL DE FORMRESPONSE (Paso 4)
-                    URL_FORM = "https://docs.google.com/forms/d/1Rcia7S5YbZE9MKIKRVnC33rEPJJ2TCWGF9czi8xNjZo/formResponse"
+                    # Tu URL configurada para recibir datos
+                    URL_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSe2Oa4_94zM_R7-02LpB6-95f-A8q97f-m2Rcia7S5YbZE9MKIKRVnC33rEPJJ2TCWGF9czi8xNjZo/formResponse"
 
-                    # 2. Enviamos cada artículo del carrito
                     for item in st.session_state.carrito:
-                        # Reemplazá los números de abajo con tus entry.ids del Paso 3
-                        datos_a_enviar = {
-                            "entry.1052421295": item["ID_Interno"],
-                            "entry.86333906": item["Fecha"],
-                            "entry.1798143717": item["Email"],
-                            "entry.381395396": item["Nombre"],
-                            "entry.685831799": item["Apellido"],
-                            "entry.23641309": item["DNI"],
-                            "entry.1804489317": item["Codigo"],
-                            "entry.1081571862": item["Articulo"],
-                            "entry.114180891": item["Cantidad"],
-                            "entry.749797592": item["Motivo"],
-                            "entry.812145108": st.session_state.seccion  # El nombre de la hoja/sector
+                        payload = {
+                            "entry.2120464811": str(item["ID_Interno"]),
+                            "entry.1706240292": str(item["Fecha"]),
+                            "entry.1228494916": str(item["Email"]),
+                            "entry.1728271791": str(item["Nombre"]),
+                            "entry.362945281": str(item["Apellido"]),
+                            "entry.340051187": str(item["DNI"]),
+                            "entry.2001556093": str(item["Codigo"]),
+                            "entry.198308892": str(item["Articulo"]),
+                            "entry.73145465": str(item["Cantidad"]),
+                            "entry.1843187129": str(item["Motivo"]),
+                            "entry.40698285": str(st.session_state.seccion)
                         }
                         
-                        # Esto envía el dato al formulario
-                        respuesta = requests.post(URL_FORM, data=datos_a_enviar)
-                        
-                        if respuesta.status_code != 200:
-                            st.error(f"Error al enviar {item['Articulo']}")
+                        # Realizamos el envío
+                        requests.post(URL_FORM, data=payload)
 
-                    # --- BLOQUEO DE SEGURIDAD PARA MATERIALES ---
+                    # --- LÓGICA DE BLOQUEO (SOLO SI ES MATERIALES) ---
                     if st.session_state.seccion == "Materiales":
                         try:
-                            # Leemos la hoja de autorizaciones para bloquear al usuario
                             df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
                             df_auth['DNI'] = df_auth['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
                             df_auth.loc[df_auth['DNI'] == str(dni_actual), 'Estado'] = "bloqueado"
                             conn.update(worksheet="Autorizaciones", data=df_auth)
                         except:
-                            pass # Si falla el bloqueo, al menos el pedido ya se envió
+                            pass
 
-                    st.success("✅ Pedido enviado correctamente.")
-                    
-                    # Limpiamos todo y volvemos al menú
+                    st.success("✅ Pedido enviado a la base de datos.")
                     st.session_state.carrito = []
                     time.sleep(1.5)
                     st.session_state.seccion = "Menu"
                     st.rerun()
 
                 except Exception as e:
-                    st.error(f"Hubo un problema con la conexión: {e}")
+                    st.error(f"Error de conexión: {e}")
