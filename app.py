@@ -1,4 +1,5 @@
 import streamlit as st
+import requests
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
@@ -355,71 +356,52 @@ with tab2:
 
         # BOTÓN DE ENVÍO FINAL CON LÓGICA ANTI-SOBREESCRITURA
         if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
-            with st.spinner("Sincronizando con el servidor (evitando colisiones)..."):
+            with st.spinner("Enviando a la base de datos segura..."):
                 try:
-                    columnas_maestras = ["ID_Interno", "Fecha", "Email", "Nombre", "Apellido", "DNI", "Codigo", "Articulo", "Cantidad", "Motivo"]
-                    
-                    # 1. Preparar datos locales con IDs únicos (esto evita duplicados)
-                    df_new = pd.DataFrame(st.session_state.carrito)
-                    for col in columnas_maestras:
-                        if col not in df_new.columns: df_new[col] = ""
-                    df_new = df_new[columnas_maestras]
+                    # 1. TU URL DE FORMRESPONSE (Paso 4)
+                    URL_FORM = "https://docs.google.com/forms/d/e/ACA_VA_TU_ID_DE_FORMULARIO/formResponse"
 
-                    # 2. Intentar la subida con reintentos en caso de colisión
-                    intentos = 0
-                    max_intentos = 5
-                    subido_con_exito = False
-
-                    while intentos < max_intentos and not subido_con_exito:
-                        # LEER: Obtenemos lo que hay en la nube AHORA mismo
-                        df_actual_nube = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
+                    # 2. Enviamos cada artículo del carrito
+                    for item in st.session_state.carrito:
+                        # Reemplazá los números de abajo con tus entry.ids del Paso 3
+                        datos_a_enviar = {
+                            "entry.1000001": item["ID_Interno"],
+                            "entry.1000002": item["Fecha"],
+                            "entry.1000003": item["Email"],
+                            "entry.1000004": item["Nombre"],
+                            "entry.1000005": item["Apellido"],
+                            "entry.1000006": item["DNI"],
+                            "entry.1000007": item["Codigo"],
+                            "entry.1000008": item["Articulo"],
+                            "entry.1000009": item["Cantidad"],
+                            "entry.1000010": item["Motivo"],
+                            "entry.1000011": st.session_state.seccion  # El nombre de la hoja/sector
+                        }
                         
-                        # Limpiar datos de la nube para asegurar comparación limpia
-                        if not df_actual_nube.empty:
-                            for col in df_actual_nube.columns:
-                                df_actual_nube[col] = df_actual_nube[col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-                        else:
-                            df_actual_nube = pd.DataFrame(columns=columnas_maestras)
-
-                        # VERIFICAR: ¿Mis IDs ya están ahí? (Por si se subió a medias en un lag)
-                        mis_ids = set(df_new["ID_Interno"].astype(str))
-                        ids_nube = set(df_actual_nube["ID_Interno"].astype(str)) if not df_actual_nube.empty else set()
+                        # Esto envía el dato al formulario
+                        respuesta = requests.post(URL_FORM, data=datos_a_enviar)
                         
-                        if mis_ids.intersection(ids_nube):
-                            subido_con_exito = True
-                            break
+                        if respuesta.status_code != 200:
+                            st.error(f"Error al enviar {item['Articulo']}")
 
-                        # UNIR: Sumamos lo nuevo al final de lo que acabamos de leer
-                        df_final = pd.concat([df_actual_nube, df_new], ignore_index=True)
-                        
-                        # ESCRIBIR: Intentamos actualizar la hoja completa
+                    # --- BLOQUEO DE SEGURIDAD PARA MATERIALES ---
+                    if st.session_state.seccion == "Materiales":
                         try:
-                            conn.update(worksheet=st.session_state.seccion, data=df_final)
-                            subido_con_exito = True
-                        except Exception as e_api:
-                            # Si falla (por ejemplo, Google Sheets está bloqueado por otra escritura)
-                            intentos += 1
-                            time.sleep(2) # Esperar 2 segundos antes de volver a intentar
-                    
-                    if subido_con_exito:
-                        # Bloqueo de seguridad (Solo para Materiales)
-                        if st.session_state.seccion == "Materiales":
-                            try:
-                                df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
-                                df_auth['DNI'] = df_auth['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-                                df_auth.loc[df_auth['DNI'] == str(dni_actual), 'Estado'] = "bloqueado"
-                                conn.update(worksheet="Autorizaciones", data=df_auth)
-                            except:
-                                pass
+                            # Leemos la hoja de autorizaciones para bloquear al usuario
+                            df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+                            df_auth['DNI'] = df_auth['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+                            df_auth.loc[df_auth['DNI'] == str(dni_actual), 'Estado'] = "bloqueado"
+                            conn.update(worksheet="Autorizaciones", data=df_auth)
+                        except:
+                            pass # Si falla el bloqueo, al menos el pedido ya se envió
 
-                        st.success("✅ Pedido guardado en la base de datos.")
-                        registrar_log(nombre_completo, dni_actual, "PEDIDO_ENVIADO", st.session_state.seccion)
-                        st.session_state.carrito = []
-                        time.sleep(1)
-                        st.session_state.seccion = "Menu"
-                        st.rerun()
-                    else:
-                        st.error("❌ No se pudo sincronizar el pedido por saturación. Reintenta en 5 segundos.")
+                    st.success("✅ Pedido enviado correctamente.")
+                    
+                    # Limpiamos todo y volvemos al menú
+                    st.session_state.carrito = []
+                    time.sleep(1.5)
+                    st.session_state.seccion = "Menu"
+                    st.rerun()
 
                 except Exception as e:
-                    st.error(f"Error crítico: {e}")
+                    st.error(f"Hubo un problema con la conexión: {e}")
