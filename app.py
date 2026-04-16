@@ -355,47 +355,54 @@ with tab2:
 
         # BOTÓN DE ENVÍO FINAL CON LÓGICA ANTI-SOBREESCRITURA
         if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
-            with st.spinner("Conectando con el servidor..."):
+            with st.spinner("Procesando envío..."):
                 try:
-                    # 1. Preparar el pedido actual
+                    # 1. Convertir carrito actual a DataFrame
                     df_new = pd.DataFrame(st.session_state.carrito)
                     
-                    # 2. Normalización estricta de los datos nuevos
-                    # Esto asegura que Google Sheets no se rompa con formatos mixtos
-                    for col in ['DNI', 'Codigo', 'Cantidad']:
-                        if col in df_new.columns:
-                            df_new[col] = df_new[col].astype(str).str.replace(r'\.0$', '', regex=True).strip()
+                    # 2. Leer la base de datos actual (para no pisar nada)
+                    df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
+                    
+                    # 3. Limpieza de datos (Aquí estaba el error)
+                    # Usamos .str.strip() que es lo correcto para Series de Pandas
+                    for df in [df_old, df_new]:
+                        if not df.empty:
+                            for col in df.columns:
+                                # Convertimos a string y quitamos el .0 y espacios
+                                df[col] = df[col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
-                    # 3. EL TRUCO: LEER EL ESTADO MÁS RECIENTE JUSTO ANTES DE ESCRIBIR
-                    # Forzamos ttl=0 y volvemos a leer para minimizar la ventana de colisión
-                    df_current_db = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
+                    # 4. Combinar datos
+                    if not df_old.empty:
+                        # Forzamos a que el pedido nuevo tenga el mismo orden de columnas que el Excel
+                        df_new = df_new[df_old.columns]
+                        df_final = pd.concat([df_old, df_new], ignore_index=True)
+                    else:
+                        df_final = df_new
+
+                    # 5. Subir a Google Sheets
+                    conn.update(worksheet=st.session_state.seccion, data=df_final)
                     
-                    # Normalizamos la base actual también para que el concat sea limpio
-                    if not df_current_db.empty:
-                        for col in ['DNI', 'Codigo', 'Cantidad']:
-                            if col in df_current_db.columns:
-                                df_current_db[col] = df_current_db[col].astype(str).str.replace(r'\.0$', '', regex=True).strip()
-                    
-                    # 4. Concatenar y subir (Operación Atómica)
-                    df_update = pd.concat([df_current_db, df_new], ignore_index=True)
-                    conn.update(worksheet=st.session_state.seccion, data=df_update)
-                    
-                    # 5. Lógica de bloqueo de autorización (si aplica)
+                    # 6. Bloqueo de seguridad (Si es materiales)
                     if st.session_state.seccion == "Materiales":
                         df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
-                        df_auth['DNI'] = df_auth['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).strip()
+                        # Limpiamos DNI en la tabla de autorizaciones para comparar bien
+                        df_auth['DNI'] = df_auth['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+                        
+                        # Bloqueamos al usuario
                         df_auth.loc[df_auth['DNI'] == str(dni_actual), 'Estado'] = "bloqueado"
                         conn.update(worksheet="Autorizaciones", data=df_auth)
 
-                    # 6. Finalización
-                    st.success("✅ ¡Pedido recibido con éxito!")
-                    registrar_log(nombre_completo, dni_actual, "ENVIO_PEDIDO", st.session_state.seccion)
+                    # --- ÉXITO ---
+                    st.success("✅ Pedido enviado correctamente.")
+                    registrar_log(nombre_completo, dni_actual, "PEDIDO_ENVIADO", st.session_state.seccion)
                     
-                    # Limpiamos carrito y redirigimos
+                    # Limpiar carrito y volver al menú
                     st.session_state.carrito = []
-                    time.sleep(1)
-                    st.switch_page("app.py") # O cambiar_seccion("Menu") y st.rerun()
+                    time.sleep(1.5)
+                    st.session_state.seccion = "Menu"
+                    st.rerun()
 
                 except Exception as e:
-                    st.error(f"Hubo un problema de tráfico: {e}")
-                    st.info("Por favor, intenta enviarlo una vez más.")
+                    # Mostramos el error real para saber qué pasa
+                    st.error(f"Error técnico: {e}")
+                    st.info("Asegúrate de que las columnas en Google Sheets sean exactamente: ID_Interno, Fecha, Email, Nombre, Apellido, DNI, Codigo, Articulo, Cantidad, Motivo")
