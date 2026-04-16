@@ -359,23 +359,23 @@ with tab2:
             with st.spinner("Enviando a la base de datos segura..."):
                 try:
                     # 1. TU URL DE FORMRESPONSE (Paso 4)
-                    URL_FORM = "https://docs.google.com/forms/d/e/ACA_VA_TU_ID_DE_FORMULARIO/formResponse"
+                    URL_FORM = "https://docs.google.com/forms/d/1Rcia7S5YbZE9MKIKRVnC33rEPJJ2TCWGF9czi8xNjZo/formResponse"
 
                     # 2. Enviamos cada artículo del carrito
                     for item in st.session_state.carrito:
                         # Reemplazá los números de abajo con tus entry.ids del Paso 3
                         datos_a_enviar = {
-                            "entry.1000001": item["ID_Interno"],
-                            "entry.1000002": item["Fecha"],
-                            "entry.1000003": item["Email"],
-                            "entry.1000004": item["Nombre"],
-                            "entry.1000005": item["Apellido"],
-                            "entry.1000006": item["DNI"],
-                            "entry.1000007": item["Codigo"],
-                            "entry.1000008": item["Articulo"],
-                            "entry.1000009": item["Cantidad"],
-                            "entry.1000010": item["Motivo"],
-                            "entry.1000011": st.session_state.seccion  # El nombre de la hoja/sector
+                            "entry.1052421295": item["ID_Interno"],
+                            "entry.86333906": item["Fecha"],
+                            "entry.1798143717": item["Email"],
+                            "entry.381395396": item["Nombre"],
+                            "entry.685831799": item["Apellido"],
+                            "entry.23641309": item["DNI"],
+                            "entry.1804489317": item["Codigo"],
+                            "entry.1081571862": item["Articulo"],
+                            "entry.114180891": item["Cantidad"],
+                            "entry.749797592": item["Motivo"],
+                            "entry.812145108": st.session_state.seccion  # El nombre de la hoja/sector
                         }
                         
                         # Esto envía el dato al formulario
