@@ -355,60 +355,54 @@ with tab2:
 
         # BOTÓN DE ENVÍO FINAL CON LÓGICA ANTI-SOBREESCRITURA
         if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
-            with st.spinner("Estableciendo conexión segura con el servidor..."):
+            with st.spinner("Sincronizando con el servidor (evitando colisiones)..."):
                 try:
                     columnas_maestras = ["ID_Interno", "Fecha", "Email", "Nombre", "Apellido", "DNI", "Codigo", "Articulo", "Cantidad", "Motivo"]
                     
-                    # Preparamos los datos nuevos localmente
+                    # 1. Preparar datos locales con IDs únicos (esto evita duplicados)
                     df_new = pd.DataFrame(st.session_state.carrito)
                     for col in columnas_maestras:
                         if col not in df_new.columns: df_new[col] = ""
                     df_new = df_new[columnas_maestras]
-                    
-                    # Limpieza de los datos nuevos
-                    for col in df_new.columns:
-                        df_new[col] = df_new[col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
-                    # --- INICIO DE LÓGICA ANTI-COLISIÓN ---
-                    max_reintentos = 3
-                    exito = False
-                    
-                    for intento in range(max_reintentos):
-                        # 1. Leemos el estado ACTUAL de la nube justo antes de escribir (TTL=0)
-                        try:
-                            df_actual_nube = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
-                        except:
+                    # 2. Intentar la subida con reintentos en caso de colisión
+                    intentos = 0
+                    max_intentos = 5
+                    subido_con_exito = False
+
+                    while intentos < max_intentos and not subido_con_exito:
+                        # LEER: Obtenemos lo que hay en la nube AHORA mismo
+                        df_actual_nube = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
+                        
+                        # Limpiar datos de la nube para asegurar comparación limpia
+                        if not df_actual_nube.empty:
+                            for col in df_actual_nube.columns:
+                                df_actual_nube[col] = df_actual_nube[col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+                        else:
                             df_actual_nube = pd.DataFrame(columns=columnas_maestras)
 
-                        # 2. Verificamos si nuestro ID ya fue escrito por algún lag previo
-                        ids_en_nube = df_actual_nube["ID_Interno"].values if not df_actual_nube.empty else []
-                        mis_ids = df_new["ID_Interno"].values
+                        # VERIFICAR: ¿Mis IDs ya están ahí? (Por si se subió a medias en un lag)
+                        mis_ids = set(df_new["ID_Interno"].astype(str))
+                        ids_nube = set(df_actual_nube["ID_Interno"].astype(str)) if not df_actual_nube.empty else set()
                         
-                        if any(id_check in ids_en_nube for id_check in mis_ids):
-                            exito = True # Ya se guardó en un intento previo que dio timeout pero llegó
+                        if mis_ids.intersection(ids_nube):
+                            subido_con_exito = True
                             break
 
-                        # 3. Concatenamos los datos nuevos al final de lo que acabamos de leer
-                        df_para_subir = pd.concat([df_actual_nube, df_new], ignore_index=True, sort=False)
+                        # UNIR: Sumamos lo nuevo al final de lo que acabamos de leer
+                        df_final = pd.concat([df_actual_nube, df_new], ignore_index=True)
                         
-                        # Limpieza de seguridad para evitar duplicados por formato
-                        for col in df_para_subir.columns:
-                            df_para_subir[col] = df_para_subir[col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-
-                        # 4. Intentamos subir
+                        # ESCRIBIR: Intentamos actualizar la hoja completa
                         try:
-                            conn.update(worksheet=st.session_state.seccion, data=df_para_subir)
-                            exito = True
-                            break # Salimos del bucle si funcionó
-                        except Exception as e_update:
-                            if intento < max_reintentos - 1:
-                                time.sleep(2) # Esperamos a que la otra persona termine de escribir
-                                continue
-                            else:
-                                raise e_update
-
-                    if exito:
-                        # Bloqueo de seguridad para Materiales (Solo si la subida fue exitosa)
+                            conn.update(worksheet=st.session_state.seccion, data=df_final)
+                            subido_con_exito = True
+                        except Exception as e_api:
+                            # Si falla (por ejemplo, Google Sheets está bloqueado por otra escritura)
+                            intentos += 1
+                            time.sleep(2) # Esperar 2 segundos antes de volver a intentar
+                    
+                    if subido_con_exito:
+                        # Bloqueo de seguridad (Solo para Materiales)
                         if st.session_state.seccion == "Materiales":
                             try:
                                 df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
@@ -418,15 +412,14 @@ with tab2:
                             except:
                                 pass
 
-                        st.success("✅ Pedido enviado correctamente.")
+                        st.success("✅ Pedido guardado en la base de datos.")
                         registrar_log(nombre_completo, dni_actual, "PEDIDO_ENVIADO", st.session_state.seccion)
-                        
                         st.session_state.carrito = []
                         time.sleep(1)
                         st.session_state.seccion = "Menu"
                         st.rerun()
                     else:
-                        st.error("❌ El servidor está ocupado. Por favor, intenta enviar nuevamente en unos segundos.")
+                        st.error("❌ No se pudo sincronizar el pedido por saturación. Reintenta en 5 segundos.")
 
                 except Exception as e:
-                    st.error(f"Error de sincronización: {e}. Intenta de nuevo.")
+                    st.error(f"Error crítico: {e}")
