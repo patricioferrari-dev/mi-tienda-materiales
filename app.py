@@ -355,52 +355,49 @@ with tab2:
 
         # BOTÓN DE ENVÍO FINAL CON LÓGICA ANTI-SOBREESCRITURA
         if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
-            with st.spinner("Sincronizando con el servidor..."):
+            with st.spinner("Enviando pedido..."):
                 try:
-                    # 1. Preparar datos nuevos del carrito
+                    # 1. Preparar el pedido actual
                     df_new = pd.DataFrame(st.session_state.carrito)
                     
-                    # Limpiar posibles decimales en el DNI y Código antes de subir
-                    for col in ['DNI', 'Codigo']:
-                        if col in df_new.columns:
-                            df_new[col] = df_new[col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-
-                    # 2. RE-LECTURA CRÍTICA: Leemos lo que hay en la nube JUSTO AHORA
-                    # ttl=0 evita que Streamlit use datos viejos guardados en memoria
-                    df_actual_servidor = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
+                    # 2. Leer la base de datos actual (con ttl=0 para tener lo más reciente)
+                    df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
                     
-                    if not df_actual_servidor.empty:
-                        # Limpiamos también la base actual por seguridad
-                        df_actual_servidor['DNI'] = df_actual_servidor['DNI'].astype(str).str.replace(r'\.0$', '', regex=True)
+                    # 3. NORMALIZACIÓN DE DATOS (Vital para evitar fallos de envío)
+                    # Convertimos todo a string y limpiamos los .0 de los DNI y Códigos
+                    for df in [df_old, df_new]:
+                        if not df.empty:
+                            for col in ['DNI', 'Codigo', 'Cantidad']:
+                                if col in df.columns:
+                                    df[col] = df[col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
-                    # 3. UNIÓN DE DATOS: Pegamos lo nuevo al final de lo que ya existe en el servidor
-                    df_final = pd.concat([df_actual_servidor, df_new], ignore_index=True)
+                    # 4. CONCATENAR
+                    df_final = pd.concat([df_old, df_new], ignore_index=True)
                     
-                    # 4. SUBIDA: Actualizamos la hoja completa
+                    # 5. SUBIR A GOOGLE SHEETS
                     conn.update(worksheet=st.session_state.seccion, data=df_final)
                     
-                    # 5. BLOQUEO DE AUTORIZACIÓN (Solo si es sección Materiales)
+                    # 6. LÓGICA DE BLOQUEO (Solo si es Materiales)
                     if st.session_state.seccion == "Materiales":
                         df_up = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
-                        # Usamos el DNI del usuario actual para bloquearlo
-                        dni_usuario = limpiar_dni(st.session_state.datos_usuario.get('DNI', ''))
+                        # Normalizar DNI en la tabla de autorizaciones
+                        df_up['DNI'] = df_up['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
                         
-                        # Marcamos como bloqueado en la copia local que acabamos de leer
-                        for idx_auth, row_auth in df_up.iterrows():
-                            if limpiar_dni(row_auth['DNI']) == dni_usuario:
-                                df_up.at[idx_auth, 'Estado'] = "bloqueado"
-                                break # Ya lo encontramos, salimos del loop
-                        
-                        # Subimos la tabla de autorizaciones actualizada
-                        conn.update(worksheet="Autorizaciones", data=df_up)
+                        # Buscar y bloquear al usuario actual
+                        mask = df_up['DNI'] == str(dni_actual)
+                        if mask.any():
+                            df_up.loc[mask, 'Estado'] = "bloqueado"
+                            conn.update(worksheet="Autorizaciones", data=df_up)
 
-                    # 6. FINALIZACIÓN
-                    st.success("✅ Pedido enviado correctamente y registrado.")
-                    st.session_state.carrito = [] # Vaciamos el carrito local
-                    time.sleep(1.5)
+                    # ÉXITO
+                    st.success("✅ Pedido enviado correctamente.")
+                    st.session_state.carrito = [] # Limpiar carrito
+                    registrar_log(nombre_completo, dni_actual, "PEDIDO_ENVIADO", st.session_state.seccion)
+                    
+                    time.sleep(2)
                     cambiar_seccion("Menu")
                     st.rerun()
-                    
+
                 except Exception as e:
-                    st.error(f"❌ Error al enviar el pedido: {e}")
-                    st.info("Intenta enviar nuevamente en unos segundos.")
+                    st.error(f"❌ Error al enviar: {e}")
+                    st.info("Inténtalo de nuevo. Si el error persiste, verifica la conexión.")
