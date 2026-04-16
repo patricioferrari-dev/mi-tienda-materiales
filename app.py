@@ -361,14 +361,12 @@ with tab2:
             else:
                 with st.spinner("Sincronizando con la central segura..."):
                     try:
-                        # 1. NUEVA URL DEL FORMULARIO
+                        # 1. ENVÍO AL FORMULARIO DE GOOGLE (Para respaldo y auditoría)
                         URL_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSeNGtbC5IpMWrarbt_1GQS82aOZ4V3henxp5_NRP4vOwrss4g/formResponse"
-                        
                         headers = {"Content-Type": "application/x-www-form-urlencoded"}
-                        exito_total = True
+                        exito_google = True
                         
                         for item in st.session_state.carrito:
-                            # 2. NUEVOS ENTRY IDs (Extraídos de tu último link)
                             payload = {
                                 "entry.1052421295": str(item["ID_Interno"]),
                                 "entry.86333906":   str(item["Fecha"]),
@@ -382,30 +380,50 @@ with tab2:
                                 "entry.749797592":  str(item["Motivo"]),
                                 "entry.812145108":  str(st.session_state.seccion)
                             }
-                            
                             r = requests.post(URL_FORM, data=payload, headers=headers, timeout=10)
                             if r.status_code not in [200, 302]:
-                                exito_total = False
-                                break
+                                exito_google = False
 
-                        if exito_total:
-                            # Lógica de bloqueo para materiales
+                        # 2. ESCRIBIR DIRECTAMENTE EN LA HOJA CORRESPONDIENTE (Materiales, Herramientas, etc.)
+                        try:
+                            # Determinamos a qué hoja de Excel ir
+                            # Si la sección es "Insumos_Libreria", la hoja se llama "Libreria" según tus permisos
+                            nombre_hoja = st.session_state.seccion
+                            
+                            # Leemos la hoja actual
+                            df_destino = conn.read(worksheet=nombre_hoja, ttl=0).dropna(how='all')
+                            
+                            # Convertimos el carrito actual en un DataFrame
+                            nuevo_pedido_df = pd.DataFrame(st.session_state.carrito)
+                            
+                            # Concatenamos (unimos) lo viejo con lo nuevo
+                            df_final = pd.concat([df_destino, nuevo_pedido_df], ignore_index=True)
+                            
+                            # Subimos todo de nuevo a esa pestaña específica
+                            conn.update(worksheet=nombre_hoja, data=df_final)
+                            exito_hoja_especifica = True
+                        except Exception as e:
+                            st.warning(f"No se pudo actualizar la hoja '{st.session_state.seccion}': {e}")
+                            exito_hoja_especifica = False
+
+                        # 3. FINALIZAR PROCESO
+                        if exito_google:
+                            # Lógica de bloqueo para materiales (Solo si es sección Materiales)
                             if st.session_state.seccion == "Materiales":
                                 try:
                                     df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
                                     df_auth['DNI'] = df_auth['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
                                     df_auth.loc[df_auth['DNI'] == str(dni_actual), 'Estado'] = "bloqueado"
                                     conn.update(worksheet="Autorizaciones", data=df_auth)
-                                except:
-                                    pass
+                                except: pass
 
-                            st.success("✅ Pedido enviado con éxito.")
+                            st.success(f"✅ Pedido enviado y registrado en {st.session_state.seccion}.")
                             st.session_state.carrito = []
                             time.sleep(1.5)
                             st.session_state.seccion = "Menu"
                             st.rerun()
                         else:
-                            st.error(f"❌ Error {r.status_code}: Google rechazó el envío. Verificá que el Form sea PÚBLICO y sin preguntas OBLIGATORIAS.")
+                            st.error("❌ Error al enviar datos. Intente nuevamente.")
 
                     except Exception as e:
-                        st.error(f"Error de conexión: {e}")
+                        st.error(f"Error crítico: {e}")
