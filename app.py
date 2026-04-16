@@ -361,12 +361,15 @@ with tab2:
             else:
                 with st.spinner("Sincronizando con la central segura..."):
                     try:
-                        # 1. URL Correcta
                         URL_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSe2Oa4_94zM_R7-02LpB6-95f-A8q97f-m2Rcia7S5YbZE9MKIKRVnC33rEPJJ2TCWGF9czi8xNjZo/formResponse"
+                        
+                        # Headers para evitar el rechazo de Google
+                        headers = {
+                            "Content-Type": "application/x-www-form-urlencoded"
+                        }
                         
                         exito_total = True
                         
-                        # 2. Bucle de envío
                         for item in st.session_state.carrito:
                             payload = {
                                 "entry.2120464811": str(item["ID_Interno"]),
@@ -382,22 +385,26 @@ with tab2:
                                 "entry.40698285": str(st.session_state.seccion)
                             }
                             
-                            # Envío individual
-                            r = requests.post(URL_FORM, data=payload, timeout=10)
-                            if r.status_code != 200:
+                            # Realizamos el envío
+                            r = requests.post(URL_FORM, data=payload, headers=headers, timeout=10)
+                            
+                            # Google Forms devuelve 200 o corrección de éxito aunque sea un post externo
+                            if r.status_code not in [200, 302]:
                                 exito_total = False
+                                break # Si uno falla, paramos para revisar
 
-                        # 3. Acciones post-envío (FUERA DEL BUCLE FOR)
                         if exito_total:
                             # Lógica de bloqueo para materiales
                             if st.session_state.seccion == "Materiales":
                                 try:
                                     df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+                                    # Limpiamos DNI de la tabla de autorizaciones
                                     df_auth['DNI'] = df_auth['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+                                    # Bloqueamos al usuario
                                     df_auth.loc[df_auth['DNI'] == str(dni_actual), 'Estado'] = "bloqueado"
                                     conn.update(worksheet="Autorizaciones", data=df_auth)
-                                except:
-                                    pass
+                                except Exception as e:
+                                    st.warning(f"Pedido enviado, pero no se pudo bloquear el usuario: {e}")
 
                             st.success("✅ Pedido enviado a la base de datos.")
                             st.session_state.carrito = []
@@ -405,7 +412,7 @@ with tab2:
                             st.session_state.seccion = "Menu"
                             st.rerun()
                         else:
-                            st.error("❌ Google rechazó el pedido. Revisá que el formulario sea PÚBLICO.")
+                            st.error(f"❌ Google rechazó el pedido (Error {r.status_code}). Revisá que todas las preguntas sean NO OBLIGATORIAS.")
 
                     except Exception as e:
                         st.error(f"Error de conexión: {e}")
