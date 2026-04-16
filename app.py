@@ -356,44 +356,52 @@ with tab2:
 
         # BOTÓN DE ENVÍO FINAL CON LÓGICA ANTI-SOBREESCRITURA
         if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
-            with st.spinner("Sincronizando con la central segura..."):
-                try:
-                    # Tu URL configurada para recibir datos
-                    URL_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSe2Oa4_94zM_R7-02LpB6-95f-A8q97f-m2Rcia7S5YbZE9MKIKRVnC33rEPJJ2TCWGF9czi8xNjZo/formResponse"
+            if not st.session_state.carrito:
+                st.error("El carrito está vacío.")
+            else:
+                with st.spinner("Sincronizando con la central segura..."):
+                    try:
+                        URL_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSe2Oa4_94zM_R7-02LpB6-95f-A8q97f-m2Rcia7S5YbZE9MKIKRVnC33rEPJJ2TCWGF9czi8xNjZo/formResponse"
 
-                    for item in st.session_state.carrito:
-                        payload = {
-                            "entry.2120464811": str(item["ID_Interno"]),
-                            "entry.1706240292": str(item["Fecha"]),
-                            "entry.1228494916": str(item["Email"]),
-                            "entry.1728271791": str(item["Nombre"]),
-                            "entry.362945281": str(item["Apellido"]),
-                            "entry.340051187": str(item["DNI"]),
-                            "entry.2001556093": str(item["Codigo"]),
-                            "entry.198308892": str(item["Articulo"]),
-                            "entry.73145465": str(item["Cantidad"]),
-                            "entry.1843187129": str(item["Motivo"]),
-                            "entry.40698285": str(st.session_state.seccion)
-                        }
-                        
-                        # Realizamos el envío
-                        requests.post(URL_FORM, data=payload)
+                        exito_total = True
+                        for item in st.session_state.carrito:
+                            payload = {
+                                "entry.2120464811": str(item["ID_Interno"]),
+                                "entry.1706240292": str(item["Fecha"]),
+                                "entry.1228494916": str(item["Email"]),
+                                "entry.1728271791": str(item["Nombre"]),
+                                "entry.362945281": str(item["Apellido"]),
+                                "entry.340051187": str(item["DNI"]),
+                                "entry.2001556093": str(item["Codigo"]),
+                                "entry.198308892": str(item["Articulo"]),
+                                "entry.73145465": str(item["Cantidad"]),
+                                "entry.1843187129": str(item["Motivo"]),
+                                "entry.40698285": str(st.session_state.seccion)
+                            }
+                            
+                            # Enviamos y esperamos máximo 10 segundos
+                            r = requests.post(URL_FORM, data=payload, timeout=10)
+                            if r.status_code != 200:
+                                exito_total = False
 
-                    # --- LÓGICA DE BLOQUEO (SOLO SI ES MATERIALES) ---
-                    if st.session_state.seccion == "Materiales":
-                        try:
-                            df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
-                            df_auth['DNI'] = df_auth['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-                            df_auth.loc[df_auth['DNI'] == str(dni_actual), 'Estado'] = "bloqueado"
-                            conn.update(worksheet="Autorizaciones", data=df_auth)
-                        except:
-                            pass
+                        if exito_total:
+                            # --- LÓGICA DE BLOQUEO SOLO SI ES MATERIALES ---
+                            if st.session_state.seccion == "Materiales":
+                                try:
+                                    df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+                                    df_auth['DNI'] = df_auth['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+                                    df_auth.loc[df_auth['DNI'] == str(dni_actual), 'Estado'] = "bloqueado"
+                                    conn.update(worksheet="Autorizaciones", data=df_auth)
+                                except:
+                                    pass
 
-                    st.success("✅ Pedido enviado a la base de datos.")
-                    st.session_state.carrito = []
-                    time.sleep(1.5)
-                    st.session_state.seccion = "Menu"
-                    st.rerun()
+                            st.success("✅ Pedido enviado a la base de datos.")
+                            st.session_state.carrito = []
+                            time.sleep(1.5)
+                            st.session_state.seccion = "Menu"
+                            st.rerun()
+                        else:
+                            st.error("❌ Google rechazó el pedido. Revisá que el formulario sea PÚBLICO.")
 
-                except Exception as e:
-                    st.error(f"Error de conexión: {e}")
+                    except Exception as e:
+                        st.error(f"Error de conexión: {e}")
