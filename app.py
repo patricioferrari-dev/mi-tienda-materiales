@@ -81,30 +81,38 @@ if not st.session_state.autenticado:
             confirm_p = st.text_input("Confirmar Contraseña:", type="password")
             
             if st.form_submit_button("GUARDAR Y ACTIVAR CUENTA"):
-                cel_limpio = n_cel.replace(" ", "").replace("-", "")
-                if not es_email_valido(n_mail): st.error("⚠️ Email no válido.")
-                elif len(cel_limpio) != 10: st.error("⚠️ El celular debe tener 10 dígitos.")
-                elif nueva_p != confirm_p: st.error("⚠️ Las contraseñas no coinciden.")
-                else:
-                    # Forzamos DNI y Celular a string al leer
-                    df_db = conn.read(worksheet="DB_Tecnicos", ttl=0).dropna(how='all')
-                    df_db['DNI'] = df_db['DNI'].astype(str)
-                    
-                    idx = -1
-                    for i, row in df_db.iterrows():
-                        if limpiar_dni(row['DNI']) == dni_limpio_user:
-                            idx = i
-                            break
-                    
-                    if idx != -1:
-                        df_db.at[idx, 'Contrasena'] = str(nueva_p)
-                        df_db.at[idx, 'Email'] = str(n_mail)
-                        df_db.at[idx, 'Celular'] = str(cel_limpio)
-                        conn.update(worksheet="DB_Tecnicos", data=df_db)
-                        registrar_log(f"{user.get('Nombre')} {user.get('Apellido')}", dni_limpio_user, "REGISTRO_EXITOSO", "Acceso", "Cuenta activada")
-                        st.success("✅ Cuenta activada.")
-                        st.session_state.reestablecer = False
-                        time.sleep(2); st.rerun()
+    cel_limpio = n_cel.replace(" ", "").replace("-", "")
+    if not es_email_valido(n_mail): st.error("⚠️ Email no válido.")
+    elif len(cel_limpio) != 10: st.error("⚠️ El celular debe tener 10 dígitos.")
+    elif nueva_p != confirm_p: st.error("⚠️ Las contraseñas no coinciden.")
+    else:
+        df_db = conn.read(worksheet="DB_Tecnicos", ttl=0).dropna(how='all')
+        
+        # --- ESTO ES LO QUE SOLUCIONA EL ERROR ---
+        # Convertimos las columnas críticas a texto para que acepten cualquier valor
+        df_db['Celular'] = df_db['Celular'].astype(str)
+        df_db['DNI'] = df_db['DNI'].astype(str)
+        df_db['Contrasena'] = df_db['Contrasena'].astype(str)
+        # -----------------------------------------
+
+        idx = -1
+        dni_string_busqueda = dni_limpio_user
+        for i, row in df_db.iterrows():
+            if limpiar_dni(row['DNI']) == dni_string_busqueda:
+                idx = i
+                break
+        
+        if idx != -1:
+            # Ahora ya no fallará porque la columna es de tipo texto
+            df_db.at[idx, 'Contrasena'] = str(nueva_p)
+            df_db.at[idx, 'Email'] = str(n_mail)
+            df_db.at[idx, 'Celular'] = str(cel_limpio)
+            
+            conn.update(worksheet="DB_Tecnicos", data=df_db)
+            registrar_log(f"{user.get('Nombre')} {user.get('Apellido')}", dni_limpio_user, "REGISTRO_EXITOSO", "Acceso", "Cuenta activada")
+            st.success("✅ Cuenta activada.")
+            st.session_state.reestablecer = False
+            time.sleep(2); st.rerun()
 
     elif st.session_state.modo_registro:
         st.title("📝 Registro de Usuario")
