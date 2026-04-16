@@ -355,56 +355,78 @@ with tab2:
 
         # BOTÓN DE ENVÍO FINAL CON LÓGICA ANTI-SOBREESCRITURA
         if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
-            with st.spinner("Procesando envío..."):
+            with st.spinner("Estableciendo conexión segura con el servidor..."):
                 try:
-                    # 1. Definir la estructura maestra
                     columnas_maestras = ["ID_Interno", "Fecha", "Email", "Nombre", "Apellido", "DNI", "Codigo", "Articulo", "Cantidad", "Motivo"]
                     
-                    # 2. Convertir carrito a DataFrame
+                    # Preparamos los datos nuevos localmente
                     df_new = pd.DataFrame(st.session_state.carrito)
-                    
                     for col in columnas_maestras:
-                        if col not in df_new.columns:
-                            df_new[col] = ""
-                    
+                        if col not in df_new.columns: df_new[col] = ""
                     df_new = df_new[columnas_maestras]
-
-                    # 3. Leer los datos existentes (TTL=0 obligatorio)
-                    try:
-                        df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
-                    except:
-                        df_old = pd.DataFrame(columns=columnas_maestras)
-
-                    # 4. Limpieza profunda
-                    for df in [df_old, df_new]:
-                        if not df.empty:
-                            for col in df.columns:
-                                df[col] = df[col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-
-                    # 5. CONCATENACIÓN (Poner lo nuevo debajo de lo viejo)
-                    df_final = pd.concat([df_old, df_new], ignore_index=True, sort=False)
-                    df_final = df_final[columnas_maestras]
-
-                    # 6. ACTUALIZAR GOOGLE SHEETS
-                    conn.update(worksheet=st.session_state.seccion, data=df_final)
                     
-                    # 7. BLOQUEO DE SEGURIDAD
-                    if st.session_state.seccion == "Materiales":
+                    # Limpieza de los datos nuevos
+                    for col in df_new.columns:
+                        df_new[col] = df_new[col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+
+                    # --- INICIO DE LÓGICA ANTI-COLISIÓN ---
+                    max_reintentos = 3
+                    exito = False
+                    
+                    for intento in range(max_reintentos):
+                        # 1. Leemos el estado ACTUAL de la nube justo antes de escribir (TTL=0)
                         try:
-                            df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
-                            df_auth['DNI'] = df_auth['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-                            df_auth.loc[df_auth['DNI'] == str(dni_actual), 'Estado'] = "bloqueado"
-                            conn.update(worksheet="Autorizaciones", data=df_auth)
-                        except Exception as e_auth:
-                            st.error(f"Error al bloquear autorización: {e_auth}")
+                            df_actual_nube = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
+                        except:
+                            df_actual_nube = pd.DataFrame(columns=columnas_maestras)
 
-                    st.success("✅ Pedido enviado correctamente.")
-                    registrar_log(nombre_completo, dni_actual, "PEDIDO_ENVIADO", st.session_state.seccion)
-                    
-                    st.session_state.carrito = []
-                    time.sleep(1.5)
-                    st.session_state.seccion = "Menu"
-                    st.rerun()
+                        # 2. Verificamos si nuestro ID ya fue escrito por algún lag previo
+                        ids_en_nube = df_actual_nube["ID_Interno"].values if not df_actual_nube.empty else []
+                        mis_ids = df_new["ID_Interno"].values
+                        
+                        if any(id_check in ids_en_nube for id_check in mis_ids):
+                            exito = True # Ya se guardó en un intento previo que dio timeout pero llegó
+                            break
+
+                        # 3. Concatenamos los datos nuevos al final de lo que acabamos de leer
+                        df_para_subir = pd.concat([df_actual_nube, df_new], ignore_index=True, sort=False)
+                        
+                        # Limpieza de seguridad para evitar duplicados por formato
+                        for col in df_para_subir.columns:
+                            df_para_subir[col] = df_para_subir[col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+
+                        # 4. Intentamos subir
+                        try:
+                            conn.update(worksheet=st.session_state.seccion, data=df_para_subir)
+                            exito = True
+                            break # Salimos del bucle si funcionó
+                        except Exception as e_update:
+                            if intento < max_reintentos - 1:
+                                time.sleep(2) # Esperamos a que la otra persona termine de escribir
+                                continue
+                            else:
+                                raise e_update
+
+                    if exito:
+                        # Bloqueo de seguridad para Materiales (Solo si la subida fue exitosa)
+                        if st.session_state.seccion == "Materiales":
+                            try:
+                                df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+                                df_auth['DNI'] = df_auth['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+                                df_auth.loc[df_auth['DNI'] == str(dni_actual), 'Estado'] = "bloqueado"
+                                conn.update(worksheet="Autorizaciones", data=df_auth)
+                            except:
+                                pass
+
+                        st.success("✅ Pedido enviado correctamente.")
+                        registrar_log(nombre_completo, dni_actual, "PEDIDO_ENVIADO", st.session_state.seccion)
+                        
+                        st.session_state.carrito = []
+                        time.sleep(1)
+                        st.session_state.seccion = "Menu"
+                        st.rerun()
+                    else:
+                        st.error("❌ El servidor está ocupado. Por favor, intenta enviar nuevamente en unos segundos.")
 
                 except Exception as e:
-                    st.error(f"Error técnico crítico: {e}")
+                    st.error(f"Error de sincronización: {e}. Intenta de nuevo.")
