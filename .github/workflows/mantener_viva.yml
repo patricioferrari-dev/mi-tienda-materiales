@@ -1,14 +1,17 @@
-name: Mantener App Despierta
+name: Mantener Mis Apps Despiertas
 
 on:
   schedule:
-    # Se ejecuta cada 12 horas
+    # Se ejecuta cada 12 horas (a las 00:00 y a las 12:00 UTC)
     - cron: '0 */12 * * *'
-  workflow_dispatch: # Esto sirve para que puedas probarlo tú a mano
+  workflow_dispatch: # Esto permite que lo pruebes manualmente cuando quieras
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Visitar la App
-        run: curl -s https://tu-app.streamlit.app > /dev/null
+      - name: Visitar la App 1
+        run: curl -s https://m4anaxelfe3earcdygrk5u.streamlit.app/
+
+      - name: Visitar la App 2
+        run: curl -s https://stock-jt96hgl3cncj8zyyzmgvp7.streamlit.app/
