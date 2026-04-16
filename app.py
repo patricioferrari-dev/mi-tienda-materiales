@@ -354,47 +354,41 @@ with tab2:
         st.divider()
 
         # BOTÓN DE ENVÍO FINAL CON LÓGICA ANTI-SOBREESCRITURA
-       if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
+        if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
             with st.spinner("Procesando envío..."):
                 try:
-                    # 1. Definir la estructura maestra (ORDEN EXACTO DE TU EXCEL)
+                    # 1. Definir la estructura maestra
                     columnas_maestras = ["ID_Interno", "Fecha", "Email", "Nombre", "Apellido", "DNI", "Codigo", "Articulo", "Cantidad", "Motivo"]
                     
-                    # 2. Convertir carrito a DataFrame y asegurar columnas
+                    # 2. Convertir carrito a DataFrame
                     df_new = pd.DataFrame(st.session_state.carrito)
                     
-                    # Nos aseguramos que df_new tenga todas las columnas maestras, incluso si están vacías
                     for col in columnas_maestras:
                         if col not in df_new.columns:
                             df_new[col] = ""
                     
-                    # Reordenar columnas para que coincidan con el Excel
                     df_new = df_new[columnas_maestras]
 
-                    # 3. Leer los datos existentes con TTL=0 para evitar caché
+                    # 3. Leer los datos existentes (TTL=0 obligatorio)
                     try:
                         df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
                     except:
-                        # Si la hoja no existe o falla la lectura, empezamos de cero
                         df_old = pd.DataFrame(columns=columnas_maestras)
 
-                    # 4. Limpieza profunda de strings para evitar errores de pegado
+                    # 4. Limpieza profunda
                     for df in [df_old, df_new]:
                         if not df.empty:
                             for col in df.columns:
                                 df[col] = df[col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
-                    # 5. CONCATENACIÓN SEGURA
-                    # Si df_old tiene columnas distintas, ignoramos su estructura y usamos la maestra
+                    # 5. CONCATENACIÓN (Poner lo nuevo debajo de lo viejo)
                     df_final = pd.concat([df_old, df_new], ignore_index=True, sort=False)
-                    
-                    # Volvemos a asegurar el orden antes de subir
                     df_final = df_final[columnas_maestras]
 
-                    # 6. SUBIDA A GOOGLE SHEETS
+                    # 6. ACTUALIZAR GOOGLE SHEETS
                     conn.update(worksheet=st.session_state.seccion, data=df_final)
                     
-                    # 7. BLOQUEO DE SEGURIDAD (Solo para Materiales)
+                    # 7. BLOQUEO DE SEGURIDAD
                     if st.session_state.seccion == "Materiales":
                         try:
                             df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
@@ -404,7 +398,6 @@ with tab2:
                         except Exception as e_auth:
                             st.error(f"Error al bloquear autorización: {e_auth}")
 
-                    # --- ÉXITO TOTAL ---
                     st.success("✅ Pedido enviado correctamente.")
                     registrar_log(nombre_completo, dni_actual, "PEDIDO_ENVIADO", st.session_state.seccion)
                     
@@ -415,4 +408,3 @@ with tab2:
 
                 except Exception as e:
                     st.error(f"Error técnico crítico: {e}")
-                    st.info("Revisa que el nombre de la hoja en Google Sheets coincida exactamente con el nombre del Sector.")
