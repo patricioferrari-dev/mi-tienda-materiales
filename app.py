@@ -354,68 +354,65 @@ with tab2:
         st.divider()
 
         # BOTÓN DE ENVÍO FINAL CON LÓGICA ANTI-SOBREESCRITURA
-        if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
-            if not st.session_state.carrito:
-                st.error("El carrito está vacío.")
-            else:
-                with st.spinner("Procesando envío..."):
+       if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
+            with st.spinner("Procesando envío..."):
+                try:
+                    # 1. Definir la estructura maestra (ORDEN EXACTO DE TU EXCEL)
+                    columnas_maestras = ["ID_Interno", "Fecha", "Email", "Nombre", "Apellido", "DNI", "Codigo", "Articulo", "Cantidad", "Motivo"]
+                    
+                    # 2. Convertir carrito a DataFrame y asegurar columnas
+                    df_new = pd.DataFrame(st.session_state.carrito)
+                    
+                    # Nos aseguramos que df_new tenga todas las columnas maestras, incluso si están vacías
+                    for col in columnas_maestras:
+                        if col not in df_new.columns:
+                            df_new[col] = ""
+                    
+                    # Reordenar columnas para que coincidan con el Excel
+                    df_new = df_new[columnas_maestras]
+
+                    # 3. Leer los datos existentes con TTL=0 para evitar caché
                     try:
-                        # 1. Leer la base actual PRIMERO para conocer la estructura
-                        # Usamos ttl=0 para obtener los datos más frescos
                         df_old = conn.read(worksheet=st.session_state.seccion, ttl=0).dropna(how='all')
-                        
-                        # 2. Convertir carrito actual a DataFrame
-                        df_new = pd.DataFrame(st.session_state.carrito)
-                        
-                        # 3. Normalizar columnas: Aseguramos que ambos tengan las mismas columnas
-                        # Si la hoja está vacía, definimos las columnas estándar
-                        columnas_esperadas = ["ID_Interno", "Fecha", "Email", "Nombre", "Apellido", "DNI", "Codigo", "Articulo", "Cantidad", "Motivo"]
-                        
-                        if df_old.empty:
-                            df_old = pd.DataFrame(columns=columnas_esperadas)
-                        
-                        # Forzamos a df_new a tener las columnas de df_old (rellena con NaN si faltan)
-                        df_new = df_new.reindex(columns=df_old.columns)
-                        
-                        # 4. Limpieza profunda para evitar conflictos de tipo de datos
-                        def limpiar_tabla(df_target):
-                            for col in df_target.columns:
-                                df_target[col] = df_target[col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-                                # Convertir "nan" de Pandas a texto vacío para Sheets
-                                df_target[col] = df_target[col].replace(["nan", "None", "NaN"], "")
-                            return df_target
+                    except:
+                        # Si la hoja no existe o falla la lectura, empezamos de cero
+                        df_old = pd.DataFrame(columns=columnas_maestras)
 
-                        df_old = limpiar_tabla(df_old)
-                        df_new = limpiar_tabla(df_new)
+                    # 4. Limpieza profunda de strings para evitar errores de pegado
+                    for df in [df_old, df_new]:
+                        if not df.empty:
+                            for col in df.columns:
+                                df[col] = df[col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
-                        # 5. Concatenar (Unir lo viejo con lo nuevo)
-                        df_final = pd.concat([df_old, df_new], ignore_index=True)
+                    # 5. CONCATENACIÓN SEGURA
+                    # Si df_old tiene columnas distintas, ignoramos su estructura y usamos la maestra
+                    df_final = pd.concat([df_old, df_new], ignore_index=True, sort=False)
+                    
+                    # Volvemos a asegurar el orden antes de subir
+                    df_final = df_final[columnas_maestras]
 
-                        # 6. SUBIR A GOOGLE SHEETS
-                        conn.update(worksheet=st.session_state.seccion, data=df_final)
-                        
-                        # 7. Lógica de Bloqueo de Seguridad (Solo para Materiales)
-                        if st.session_state.seccion == "Materiales":
-                            try:
-                                df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
-                                # Limpiar DNI para encontrarlo
-                                df_auth['DNI'] = df_auth['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-                                # Cambiar estado a bloqueado
-                                df_auth.loc[df_auth['DNI'] == str(dni_actual), 'Estado'] = "bloqueado"
-                                conn.update(worksheet="Autorizaciones", data=df_auth)
-                            except Exception as e_auth:
-                                st.warning(f"Pedido enviado, pero no se pudo actualizar el bloqueo: {e_auth}")
+                    # 6. SUBIDA A GOOGLE SHEETS
+                    conn.update(worksheet=st.session_state.seccion, data=df_final)
+                    
+                    # 7. BLOQUEO DE SEGURIDAD (Solo para Materiales)
+                    if st.session_state.seccion == "Materiales":
+                        try:
+                            df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+                            df_auth['DNI'] = df_auth['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+                            df_auth.loc[df_auth['DNI'] == str(dni_actual), 'Estado'] = "bloqueado"
+                            conn.update(worksheet="Autorizaciones", data=df_auth)
+                        except Exception as e_auth:
+                            st.error(f"Error al bloquear autorización: {e_auth}")
 
-                        # --- FINALIZACIÓN EXITOSA ---
-                        registrar_log(nombre_completo, dni_actual, "PEDIDO_ENVIADO", st.session_state.seccion)
-                        st.success(f"✅ ¡Pedido de {len(df_new)} artículos enviado con éxito!")
-                        
-                        # Limpiar y reiniciar
-                        st.session_state.carrito = []
-                        time.sleep(2)
-                        st.session_state.seccion = "Menu"
-                        st.rerun()
+                    # --- ÉXITO TOTAL ---
+                    st.success("✅ Pedido enviado correctamente.")
+                    registrar_log(nombre_completo, dni_actual, "PEDIDO_ENVIADO", st.session_state.seccion)
+                    
+                    st.session_state.carrito = []
+                    time.sleep(1.5)
+                    st.session_state.seccion = "Menu"
+                    st.rerun()
 
-                    except Exception as e:
-                        st.error(f"Error crítico al enviar: {e}")
-                        st.info("Revisa que los nombres de las pestañas en Google Sheets coincidan con las secciones.")
+                except Exception as e:
+                    st.error(f"Error técnico crítico: {e}")
+                    st.info("Revisa que el nombre de la hoja en Google Sheets coincida exactamente con el nombre del Sector.")
