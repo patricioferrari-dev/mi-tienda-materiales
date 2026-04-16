@@ -368,19 +368,19 @@ with tab2:
                         exito_total = True
                         
                         for item in st.session_state.carrito:
-                            # 2. NUEVOS ENTRY IDs (Basados en tu nuevo link)
+                            # 2. NUEVOS ENTRY IDs (Extraídos de tu último link)
                             payload = {
-                                "entry.1747514300": str(item["ID_Interno"]),
-                                "entry.244307525":  str(item["Fecha"]),
-                                "entry.44421115":   str(item["Email"]),
-                                "entry.384669899":  str(item["Nombre"]),
-                                "entry.2001506443": str(item["Apellido"]),
-                                "entry.169137153":  str(item["DNI"]),
-                                "entry.1237937397": str(item["Codigo"]),
-                                "entry.1118128527": str(item["Articulo"]),
-                                "entry.401944627":  str(item["Cantidad"]),
-                                "entry.1764724219": str(item["Motivo"]),
-                                "entry.697455823":  str(st.session_state.seccion)
+                                "entry.1052421295": str(item["ID_Interno"]),
+                                "entry.86333906":   str(item["Fecha"]),
+                                "entry.1798143717": str(item["Email"]),
+                                "entry.381395396":  str(item["Nombre"]),
+                                "entry.685831799":  str(item["Apellido"]),
+                                "entry.23641309":   str(item["DNI"]),
+                                "entry.1804489317": str(item["Codigo"]),
+                                "entry.1081571862": str(item["Articulo"]),
+                                "entry.114180891":  str(item["Cantidad"]),
+                                "entry.749797592":  str(item["Motivo"]),
+                                "entry.812145108":  str(st.session_state.seccion)
                             }
                             
                             r = requests.post(URL_FORM, data=payload, headers=headers, timeout=10)
