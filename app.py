@@ -71,7 +71,7 @@ if not st.session_state.autenticado:
     if st.session_state.reestablecer:
         st.title("🔑 Asignar Acceso")
         user = st.session_state.user_a_reestablecer
-        dni_limpio_user = limpiar_dni(user['DNI'])
+        dni_limpio_user = limpiar_dni(user.get('DNI', ''))
         st.info(f"Usuario: {user.get('Nombre')} {user.get('Apellido')} (DNI: {dni_limpio_user})")
         
         with st.form("form_reset"):
@@ -80,39 +80,45 @@ if not st.session_state.autenticado:
             nueva_p = st.text_input("Nueva Contraseña:", type="password")
             confirm_p = st.text_input("Confirmar Contraseña:", type="password")
             
-            if st.form_submit_button("GUARDAR Y ACTIVAR CUENTA"):
-    cel_limpio = n_cel.replace(" ", "").replace("-", "")
-    if not es_email_valido(n_mail): st.error("⚠️ Email no válido.")
-    elif len(cel_limpio) != 10: st.error("⚠️ El celular debe tener 10 dígitos.")
-    elif nueva_p != confirm_p: st.error("⚠️ Las contraseñas no coinciden.")
-    else:
-        df_db = conn.read(worksheet="DB_Tecnicos", ttl=0).dropna(how='all')
-        
-        # --- ESTO ES LO QUE SOLUCIONA EL ERROR ---
-        # Convertimos las columnas críticas a texto para que acepten cualquier valor
-        df_db['Celular'] = df_db['Celular'].astype(str)
-        df_db['DNI'] = df_db['DNI'].astype(str)
-        df_db['Contrasena'] = df_db['Contrasena'].astype(str)
-        # -----------------------------------------
-
-        idx = -1
-        dni_string_busqueda = dni_limpio_user
-        for i, row in df_db.iterrows():
-            if limpiar_dni(row['DNI']) == dni_string_busqueda:
-                idx = i
-                break
-        
-        if idx != -1:
-            # Ahora ya no fallará porque la columna es de tipo texto
-            df_db.at[idx, 'Contrasena'] = str(nueva_p)
-            df_db.at[idx, 'Email'] = str(n_mail)
-            df_db.at[idx, 'Celular'] = str(cel_limpio)
+            # TODO este bloque debe estar DENTRO del 'with st.form'
+            btn_guardar = st.form_submit_button("GUARDAR Y ACTIVAR CUENTA")
             
-            conn.update(worksheet="DB_Tecnicos", data=df_db)
-            registrar_log(f"{user.get('Nombre')} {user.get('Apellido')}", dni_limpio_user, "REGISTRO_EXITOSO", "Acceso", "Cuenta activada")
-            st.success("✅ Cuenta activada.")
-            st.session_state.reestablecer = False
-            time.sleep(2); st.rerun()
+            if btn_guardar:
+                cel_limpio = n_cel.replace(" ", "").replace("-", "")
+                if not es_email_valido(n_mail): 
+                    st.error("⚠️ Email no válido.")
+                elif len(cel_limpio) != 10: 
+                    st.error("⚠️ El celular debe tener 10 dígitos.")
+                elif nueva_p != confirm_p: 
+                    st.error("⚠️ Las contraseñas no coinciden.")
+                else:
+                    with st.spinner("Actualizando base de datos..."):
+                        df_db = conn.read(worksheet="DB_Tecnicos", ttl=0).dropna(how='all')
+                        
+                        # Aseguramos que las columnas acepten texto ANTES de escribir
+                        df_db['Celular'] = df_db['Celular'].astype(str)
+                        df_db['DNI'] = df_db['DNI'].astype(str)
+                        df_db['Contrasena'] = df_db['Contrasena'].astype(str)
+
+                        idx = -1
+                        for i, row in df_db.iterrows():
+                            if limpiar_dni(row['DNI']) == dni_limpio_user:
+                                idx = i
+                                break
+                        
+                        if idx != -1:
+                            df_db.at[idx, 'Contrasena'] = str(nueva_p)
+                            df_db.at[idx, 'Email'] = str(n_mail)
+                            df_db.at[idx, 'Celular'] = str(cel_limpio)
+                            
+                            conn.update(worksheet="DB_Tecnicos", data=df_db)
+                            registrar_log(f"{user.get('Nombre')} {user.get('Apellido')}", dni_limpio_user, "REGISTRO_EXITOSO", "Acceso", "Cuenta activada")
+                            st.success("✅ Cuenta activada.")
+                            st.session_state.reestablecer = False
+                            time.sleep(2)
+                            st.rerun()
+                        else:
+                            st.error("No se pudo encontrar el registro original para actualizar.")
 
     elif st.session_state.modo_registro:
         st.title("📝 Registro de Usuario")
@@ -134,7 +140,9 @@ if not st.session_state.autenticado:
                             st.rerun()
                         break
                 if not encontrado: st.error("🚫 DNI no encontrado.")
-        if st.button("⬅️ Volver"): st.session_state.modo_registro = False; st.rerun()
+        if st.button("⬅️ Volver"): 
+            st.session_state.modo_registro = False
+            st.rerun()
 
     else:
         st.title("🔐 Acceso SGM")
@@ -145,8 +153,7 @@ if not st.session_state.autenticado:
             db = conn.read(worksheet="DB_Tecnicos", ttl=0).dropna(how='all')
             user_match = None
             for _, row in db.iterrows():
-                # Comparación segura convirtiendo a string
-                if str(row['Email']).lower() == u_id or limpiar_dni(row['DNI']) == u_id:
+                if str(row.get('Email', '')).lower() == u_id or limpiar_dni(row.get('DNI', '')) == u_id:
                     user_match = row
                     break
             
@@ -154,15 +161,18 @@ if not st.session_state.autenticado:
                 real_pass = str(user_match.get('Contrasena', '')).strip()
                 if real_pass.lower() in ["", "nan", "none"]:
                     st.session_state.user_a_reestablecer = user_match.to_dict()
-                    st.session_state.reestablecer = True; st.rerun()
+                    st.session_state.reestablecer = True
+                    st.rerun()
                 elif real_pass == u_pass:
                     st.session_state.autenticado = True
                     st.session_state.datos_usuario = user_match.to_dict()
-                    registrar_log(f"{st.session_state.datos_usuario.get('Nombre')} {st.session_state.datos_usuario.get('Apellido')}", u_id, "LOGIN_EXITOSO", "Acceso")
+                    registrar_log(f"{user_match.get('Nombre')} {user_match.get('Apellido')}", u_id, "LOGIN_EXITOSO", "Acceso")
                     st.rerun()
                 else: st.error("Contraseña incorrecta.")
             else: st.error("Usuario no encontrado.")
-        if c2.button("Registrarme", use_container_width=True): st.session_state.modo_registro = True; st.rerun()
+        if c2.button("Registrarme", use_container_width=True): 
+            st.session_state.modo_registro = True
+            st.rerun()
     st.stop()
 
 # 5. MENÚ PRINCIPAL
