@@ -335,20 +335,28 @@ with tab2:
         st.info("Resumen vacío.")
     else:
         # Encabezados de la tabla
-        h1, h2, h3, h4 = st.columns([0.7, 1.2, 5.5, 0.6])
+        h1, h2, h3, h4 = st.columns([0.7, 1.2, 5.5, 0.7])
         h1.markdown('<div class="header-box">CT</div>', unsafe_allow_html=True)
         h2.markdown('<div class="header-box">COD</div>', unsafe_allow_html=True)
         h3.markdown('<div class="header-box">DESCRIPCIÓN</div>', unsafe_allow_html=True)
-        h4.markdown('<div class="header-box">.</div>', unsafe_allow_html=True)
+        h4.markdown('<div class="header-box">ELIM</div>', unsafe_allow_html=True)
         
         # Renderizado del carrito actual
         for idx, item in enumerate(st.session_state.carrito):
-            r1, r2, r3, r4 = st.columns([0.7, 1.2, 5.5, 0.6])
+            r1, r2, r3, r4 = st.columns([0.7, 1.2, 5.5, 0.7])
+            
+            # Cantidad
             r1.markdown(f'<div class="cell-data" style="text-align:center; padding-top:5px;">{item["Cantidad"]}</div>', unsafe_allow_html=True)
+            
+            # Código
             r2.markdown(f'<div class="cell-data" style="color:blue; padding-top:5px;">{item["Codigo"]}</div>', unsafe_allow_html=True)
+            
+            # Descripción + Motivo
             m_txt = f" - <span style='color:orange;'>{item['Motivo']}</span>" if item['Motivo'] else ""
             r3.markdown(f'<div class="cell-data" style="padding-top:5px;">{item["Articulo"]}{m_txt}</div>', unsafe_allow_html=True)
-            if r4.button(".", key=f"del_{idx}", use_container_width=True):
+            
+            # Botón de Eliminar (Icono de Basura)
+            if r4.button("🗑️", key=f"del_{idx}", use_container_width=True, help="Eliminar este artículo"):
                 st.session_state.carrito.pop(idx)
                 st.rerun()
         
