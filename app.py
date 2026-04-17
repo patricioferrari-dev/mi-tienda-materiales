@@ -226,7 +226,8 @@ if st.session_state.seccion == "Menu":
                         if st.button("🧼\nLIMPIEZA", use_container_width=True): cambiar_seccion("Insumos_Limpieza"); st.rerun()
                     elif sector == "Materiales":
                         try:
-                           df_auth = conn.read(worksheet="Autorizaciones", ttl=0, show_spinner=False).dropna(how='all')
+                            # Aquí estaba el error de espacios:
+                            df_auth = conn.read(worksheet="Autorizaciones", ttl=0, show_spinner=False).dropna(how='all')
                             autorizado = False
                             for _, row in df_auth.iterrows():
                                 if limpiar_dni(row['DNI']) == dni_actual and str(row.get('Estado', '')).lower() == "ok":
