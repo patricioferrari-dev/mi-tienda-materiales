@@ -425,7 +425,7 @@ with tab2:
                             # Lógica de bloqueo para materiales (Solo si es sección Materiales)
                             if st.session_state.seccion == "Materiales":
                                 try:
-                                    df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+                                    df_auth = conn.read(worksheet="Autorizaciones", ttl=0, show_spinner=False).dropna(how='all')
                                     df_auth['DNI'] = df_auth['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
                                     df_auth.loc[df_auth['DNI'] == str(dni_actual), 'Estado'] = "bloqueado"
                                     conn.update(worksheet="Autorizaciones", data=df_auth)
