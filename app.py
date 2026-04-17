@@ -369,18 +369,18 @@ with tab2:
         
         st.divider()
 
-        # BOTÓN DE ENVÍO FINAL CON LÓGICA ANTI-SOBREESCRITURA
+        # BOTÓN DE ENVÍO FINAL
         if st.button("🚀 ENVIAR PEDIDO FINAL", use_container_width=True):
             if not st.session_state.carrito:
                 st.error("El carrito está vacío.")
             else:
-                with st.spinner("Sincronizando con la central segura..."):
+                with st.spinner("Enviando pedido de forma segura..."):
                     try:
-                        # 1. ENVÍO AL FORMULARIO DE GOOGLE (Para respaldo y auditoría)
+                        # 1. ENVÍO AL FORMULARIO DE GOOGLE (Central de datos segura)
                         URL_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSeNGtbC5IpMWrarbt_1GQS82aOZ4V3henxp5_NRP4vOwrss4g/formResponse"
                         headers = {"Content-Type": "application/x-www-form-urlencoded"}
-                        exito_google = True
                         
+                        exito_envio = True
                         for item in st.session_state.carrito:
                             payload = {
                                 "entry.1052421295": str(item["ID_Interno"]),
@@ -397,48 +397,26 @@ with tab2:
                             }
                             r = requests.post(URL_FORM, data=payload, headers=headers, timeout=10)
                             if r.status_code not in [200, 302]:
-                                exito_google = False
+                                exito_envio = False
 
-                        # 2. ESCRIBIR DIRECTAMENTE EN LA HOJA CORRESPONDIENTE (Materiales, Herramientas, etc.)
-                        try:
-                            # Determinamos a qué hoja de Excel ir
-                            # Si la sección es "Insumos_Libreria", la hoja se llama "Libreria" según tus permisos
-                            nombre_hoja = st.session_state.seccion
-                            
-                            # Leemos la hoja actual
-                            df_destino = conn.read(worksheet=nombre_hoja, ttl=0, show_spinner=False).dropna(how='all')
-                            
-                            # Convertimos el carrito actual en un DataFrame
-                            nuevo_pedido_df = pd.DataFrame(st.session_state.carrito)
-                            
-                            # Concatenamos (unimos) lo viejo con lo nuevo
-                            df_final = pd.concat([df_destino, nuevo_pedido_df], ignore_index=True)
-                            
-                            # Subimos todo de nuevo a esa pestaña específica
-                            conn.update(worksheet=nombre_hoja, data=df_final)
-                            exito_hoja_especifica = True
-                        except Exception as e:
-                            st.warning(f"No se pudo actualizar la hoja '{st.session_state.seccion}': {e}")
-                            exito_hoja_especifica = False
+                        # 2. BLOQUEO DE SEGURIDAD (Solo si es Materiales)
+                        if exito_envio and st.session_state.seccion == "Materiales":
+                            try:
+                                # Leemos, marcamos y subimos (Esto es rápido, minimiza el riesgo)
+                                df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+                                df_auth['DNI'] = df_auth['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+                                df_auth.loc[df_auth['DNI'] == str(dni_actual), 'Estado'] = "bloqueado"
+                                conn.update(worksheet="Autorizaciones", data=df_auth)
+                            except: pass
 
-                        # 3. FINALIZAR PROCESO
-                        if exito_google:
-                            # Lógica de bloqueo para materiales (Solo si es sección Materiales)
-                            if st.session_state.seccion == "Materiales":
-                                try:
-                                    df_auth = conn.read(worksheet="Autorizaciones", ttl=0, show_spinner=False).dropna(how='all')
-                                    df_auth['DNI'] = df_auth['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-                                    df_auth.loc[df_auth['DNI'] == str(dni_actual), 'Estado'] = "bloqueado"
-                                    conn.update(worksheet="Autorizaciones", data=df_auth)
-                                except: pass
-
-                            st.success(f"✅ Pedido enviado y registrado en {st.session_state.seccion}.")
+                        if exito_envio:
+                            st.success(f"✅ Pedido enviado correctamente.")
                             st.session_state.carrito = []
                             time.sleep(1.5)
                             st.session_state.seccion = "Menu"
                             st.rerun()
                         else:
-                            st.error("❌ Error al enviar datos. Intente nuevamente.")
+                            st.error("❌ Falló la conexión con el servidor de Google.")
 
                     except Exception as e:
                         st.error(f"Error crítico: {e}")
