@@ -188,81 +188,68 @@ if not st.session_state.autenticado:
             st.rerun()
     st.stop()
 
+# ==========================================
 # 5. LÓGICA DE USUARIO AUTENTICADO
+# ==========================================
 dni_actual = limpiar_dni(st.session_state.datos_usuario.get('DNI', ''))
 nombre_completo = f"{st.session_state.datos_usuario.get('Nombre')} {st.session_state.datos_usuario.get('Apellido')}"
 
-# --- BARRA LATERAL (Solo Identificación) ---
+# --- BARRA LATERAL (Solo identificación) ---
 with st.sidebar:
     st.header("SGM")
     st.write(f"👤 **{nombre_completo}**")
     st.caption(f"DNI: {dni_actual}")
-    st.divider()
-    # Botón rápido para volver al menú si estamos en una sección
-    if st.session_state.seccion != "Menu":
-        if st.button("🏠 Volver al Menú", use_container_width=True):
-            st.session_state.seccion = "Menu"
-            st.rerun()
 
 # --- CONTENIDO PRINCIPAL ---
 if st.session_state.seccion == "Menu":
+    # ------------------------------------------
+    # VISTA DEL MENÚ PRINCIPAL
+    # ------------------------------------------
     st.title("🏢 Panel de Control")
     st.info("Seleccione un sector para realizar el pedido")
     
-    # PERMISOS (Asegúrate de tener definida la variable PERMISOS antes)
+    # PERMISOS (Asegúrate de tener la variable PERMISOS definida arriba en tu código)
+    # Si no la tienes, define aquí: PERMISOS = {"Materiales": [...], "Herramientas": [...], etc.}
     accesos_reales = [sector for sector, dnis in PERMISOS.items() if dni_actual in dnis]
 
     if not accesos_reales:
         st.warning("⚠️ Sin permisos asignados. Contacte al administrador.")
     else:
-        # Dibujamos los botones del menú
         filas = [accesos_reales[i:i + 3] for i in range(0, len(accesos_reales), 3)]
         for fila in filas:
             cols = st.columns(3)
             for i, sector in enumerate(fila):
                 with cols[i]:
-                    if sector == "Libreria":
-                        if st.button("📚\nLIBRERÍA", use_container_width=True): 
-                            st.session_state.seccion = "Insumos_Libreria"; st.rerun()
-                    elif sector == "Limpieza":
-                        if st.button("🧼\nLIMPIEZA", use_container_width=True): 
-                            st.session_state.seccion = "Insumos_Limpieza"; st.rerun()
-                    elif sector == "Materiales":
-                        try:
-                            df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
-                            autorizado = any(limpiar_dni(r['DNI']) == dni_actual and str(r.get('Estado', '')).lower() == "ok" for _, r in df_auth.iterrows())
-                            if not es_horario_permitido(): 
-                                st.button("🔒\nMAT. (Horario)", disabled=True, use_container_width=True)
-                            elif not autorizado: 
-                                st.button("🚫\nMAT. (Bloqueado)", disabled=True, use_container_width=True)
-                            else:
-                                if st.button("📦\nMATERIALES", use_container_width=True): 
-                                    st.session_state.seccion = "Materiales"; st.rerun()
-                        except: st.error("Error de conexión")
-                    elif sector == "Herramientas":
-                        if st.button("🔧\nHERRAMIENTAS", use_container_width=True): 
-                            st.session_state.seccion = "Herramientas"; st.rerun()
-                    elif sector == "Indumentaria":
-                        if st.button("👕\nINDUMENTARIA", use_container_width=True): 
-                            st.session_state.seccion = "Indumentaria"; st.rerun()
+                    if st.button(f"📦\n{sector.upper()}", use_container_width=True):
+                        if sector == "Libreria": st.session_state.seccion = "Insumos_Libreria"
+                        elif sector == "Limpieza": st.session_state.seccion = "Insumos_Limpieza"
+                        else: st.session_state.seccion = sector
+                        st.rerun()
 
 else:
-    # 6. PANEL DE CARGA (Se ejecuta si la sección NO es "Menu")
-    # Aquí va toda tu lógica de pestañas (REGISTRAR / RESUMEN) que ya tienes
-    # ... (No copio todo el bloque de listas para no saturar, pero mantén tu lógica de tab1 y tab2) ...
-    
-    # Al final de la Sección 6, dentro del "else", puedes poner un botón de volver:
+    # ------------------------------------------
+    # VISTA DE CARGA DE ARTÍCULOS (SECCIÓN)
+    # ------------------------------------------
+    # BOTÓN VOLVER (Solo uno, arriba de todo)
     if st.button("⬅️ Volver al Menú Principal", use_container_width=True):
         st.session_state.seccion = "Menu"
         st.rerun()
+        
+    st.subheader(f"📍 Sector: {st.session_state.seccion}")
+    
+    # Aquí va tu lógica de listas (listas = {...}) y los TABS (tab1, tab2)
+    # MANTÉN TU CÓDIGO DE CARGA DE ARTÍCULOS AQUÍ...
+    # (El bloque de requests.post, el carrito, etc.)
 
-# --- BOTÓN DE CIERRE SIEMPRE AL FINAL ---
-# Este botón queda fuera de cualquier 'if/else', por lo que siempre estará al fondo de la página
-st.write("") # Espacio estético
+# ==========================================
+# BOTÓN DE CIERRE (FUERA DE TODO)
+# ==========================================
+# Este botón aparecerá al final de la página, sin importar en qué sección estés
 st.divider()
 if st.button("🚪 Cerrar Sesión", use_container_width=True, type="secondary"):
     st.session_state.autenticado = False
     st.session_state.carrito = []
+    st.session_state.seccion = "Menu" # Reset para el próximo login
     st.rerun()
 # 6. PANEL DE CARGA
 # (El resto de tu código de listas e interfaz sigue aquí...)
