@@ -188,32 +188,39 @@ if not st.session_state.autenticado:
             st.rerun()
     st.stop()
 
-# 5. MENÚ PRINCIPAL
-def cambiar_seccion(nueva):
-    if st.session_state.seccion != nueva:
-        st.session_state.carrito = []
-        st.session_state.seccion = nueva
-
-# (Tu diccionario de PERMISOS se mantiene igual aquí...)
-PERMISOS = {
-    "Materiales": ["3333333", "11111111", "1111111111", "3855426", "34556566", "42617418", "43098136", "94715302", "44459597", "40777756", "94061021", "38327668", "94509310", "42375056", "37157151", "22543919", "33786801", "37702546", "29007778", "40244391", "31190690", "37015165", "32379681", "25627805", "94032245", "38512342", "39964904", "31891314", "39515561", "34705748", "95879282", "42572404", "41779740", "41917064", "25897847", "33915674", "37345461", "95859981", "35695574", "40979109", "42013818", "42046209", "43180923", "24768515", "41199185", "46108423", "38562170", "35773829", "42024623", "45356650", "38554456", "28764673", "38945380", "44822585"],
-    "Herramientas": ["3333333", "33333333", "111111111", "11111111", "3855426", "34556566", "42617418", "43098136", "94715302", "44459597", "40777756", "94061021", "38327668", "94509310", "42375056", "37157151", "22543919", "33786801", "37702546", "29007778", "40244391", "31190690", "37015165", "32379681", "25627805", "94032245", "38512342", "39964904", "31891314", "39515561", "34705748", "95879282", "42572404", "41779740", "41917064", "25897847", "33915674", "37345461", "95859981", "35695574", "40979109", "42013818", "42046209", "43180923", "24768515", "41199185", "46108423", "38562170", "35773829", "42024623", "45356650", "38554456", "28764673", "38945380", "44822585"],
-    "Indumentaria": ["3333333", "55555555", "11111111", "3855426", "34556566", "42617418", "43098136", "94715302", "44459597", "40777756", "94061021", "38327668", "94509310", "42375056", "37157151", "22543919", "33786801", "37702546", "29007778", "40244391", "31190690", "37015165", "32379681", "25627805", "94032245", "38512342", "39964904", "31891314", "39515561", "34705748", "95879282", "42572404", "41779740", "41917064", "25897847", "33915674", "37345461", "95859981", "35695574", "40979109", "42013818", "42046209", "43180923", "24768515", "41199185", "46108423", "38562170", "35773829", "42024623", "45356650", "38554456", "28764673", "38945380", "44822585"],
-    "Libreria": ["3333333", "1111111"],
-    "Limpieza": ["3333333", "1111111"]
-}
-
+# 5. LÓGICA DE USUARIO AUTENTICADO
 dni_actual = limpiar_dni(st.session_state.datos_usuario.get('DNI', ''))
 nombre_completo = f"{st.session_state.datos_usuario.get('Nombre')} {st.session_state.datos_usuario.get('Apellido')}"
 
+# --- NUEVA BARRA LATERAL (SIDEBAR) ---
+with st.sidebar:
+    st.header("SGM")
+    st.write(f"👤 **{nombre_completo}**")
+    st.caption(f"DNI: {dni_actual}")
+    st.divider()
+    
+    # Botón para volver siempre al inicio
+    if st.button("🏠 Inicio / Menú", use_container_width=True):
+        cambiar_seccion("Menu")
+        st.rerun()
+
+    st.divider()
+    
+    # Botón de cierre de sesión
+    if st.button("🚪 Cerrar Sesión", use_container_width=True, type="secondary"):
+        st.session_state.autenticado = False
+        st.session_state.carrito = []
+        st.rerun()
+
+# --- CONTENIDO PRINCIPAL ---
 if st.session_state.seccion == "Menu":
     st.title("🏢 Panel de Control")
-    st.info(f"Sesión iniciada: **{nombre_completo}**")
+    st.info("Seleccione un sector para realizar el pedido")
     
     accesos_reales = [sector for sector, dnis in PERMISOS.items() if dni_actual in dnis]
 
     if not accesos_reales:
-        st.warning("⚠️ Sin permisos asignados.")
+        st.warning("⚠️ Sin permisos asignados. Contacte al administrador.")
     else:
         filas = [accesos_reales[i:i + 3] for i in range(0, len(accesos_reales), 3)]
         for fila in filas:
@@ -221,17 +228,16 @@ if st.session_state.seccion == "Menu":
             for i, sector in enumerate(fila):
                 with cols[i]:
                     if sector == "Libreria":
-                        if st.button("📚\nLIBRERÍA", use_container_width=True): cambiar_seccion("Insumos_Libreria"); st.rerun()
+                        if st.button("📚\nLIBRERÍA", use_container_width=True): 
+                            cambiar_seccion("Insumos_Libreria"); st.rerun()
                     elif sector == "Limpieza":
-                        if st.button("🧼\nLIMPIEZA", use_container_width=True): cambiar_seccion("Insumos_Limpieza"); st.rerun()
+                        if st.button("🧼\nLIMPIEZA", use_container_width=True): 
+                            cambiar_seccion("Insumos_Limpieza"); st.rerun()
                     elif sector == "Materiales":
                         try:
+                            # Leemos autorizaciones una sola vez aquí
                             df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
-                            autorizado = False
-                            for _, row in df_auth.iterrows():
-                                if limpiar_dni(row['DNI']) == dni_actual and str(row.get('Estado', '')).lower() == "ok":
-                                    autorizado = True
-                                    break
+                            autorizado = any(limpiar_dni(r['DNI']) == dni_actual and str(r.get('Estado', '')).lower() == "ok" for _, r in df_auth.iterrows())
                             
                             if not es_horario_permitido(): 
                                 st.button("🔒\nMAT. (Horario)", disabled=True, use_container_width=True)
@@ -239,20 +245,16 @@ if st.session_state.seccion == "Menu":
                                 st.button("🚫\nMAT. (Bloqueado)", disabled=True, use_container_width=True)
                             else:
                                 if st.button("📦\nMATERIALES", use_container_width=True): 
-                                    cambiar_seccion("Materiales")
-                                    st.rerun()
-                        except Exception as e: 
-                            st.error(f"Error en Autorizaciones: {e}")
+                                    cambiar_seccion("Materiales"); st.rerun()
+                        except:
+                            st.error("Error de conexión")
                     
                     elif sector == "Herramientas":
-                        if st.button("🔧\nHERRAMIENTAS", use_container_width=True): cambiar_seccion("Herramientas"); st.rerun()
+                        if st.button("🔧\nHERRAMIENTAS", use_container_width=True): 
+                            cambiar_seccion("Herramientas"); st.rerun()
                     elif sector == "Indumentaria":
-                        if st.button("👕\nINDUMENTARIA", use_container_width=True): cambiar_seccion("Indumentaria"); st.rerun()
-
-    st.divider()
-    if st.button("Cerrar Sesión"):
-        st.session_state.autenticado = False
-        st.rerun()
+                        if st.button("👕\nINDUMENTARIA", use_container_width=True): 
+                            cambiar_seccion("Indumentaria"); st.rerun()
     st.stop()
 
 # 6. PANEL DE CARGA
