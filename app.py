@@ -17,7 +17,7 @@ st.markdown("""
     .block-container { max-width: 800px; padding-top: 1rem; }
     [data-testid="stForm"] { background-color: white; border: 1px solid #e2e8f0; padding: 15px; border-radius: 10px; }
     [data-testid="stHorizontalBlock"] { gap: 0px !important; margin-bottom: -1px !important; }
-    div[data-testid="stColumn"] { border: 1px solid #e2e8f0; padding: 2px 8px; background-color: white; min-height: 26px; display: flex; align-items: center; }
+    div[data-testid="stColumn"] { border: 1px solid #e2e8f0; padding: 2px 8px; background-color: white; min-height: 20px; display: flex; align-items: center; }
     .header-box { background-color: #475569; color: white; font-weight: 700; font-size: 10px; width: 100%; text-align: center; }
     .cell-data { font-size: 12px; color: #334155; margin: 0; line-height: 1.1; }
     #MainMenu, footer, header {visibility: hidden;}
