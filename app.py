@@ -15,11 +15,38 @@ st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
     .block-container { max-width: 800px; padding-top: 1rem; }
+    
+    /* Estilo de Formularios y Columnas */
     [data-testid="stForm"] { background-color: white; border: 1px solid #e2e8f0; padding: 15px; border-radius: 10px; }
     [data-testid="stHorizontalBlock"] { gap: 0px !important; margin-bottom: -1px !important; }
     div[data-testid="stColumn"] { border: 1px solid #e2e8f0; padding: 2px 8px; background-color: white; min-height: 26px; display: flex; align-items: center; }
+    
+    /* Encabezados de Tabla en Resumen */
     .header-box { background-color: #475569; color: white; font-weight: 700; font-size: 10px; width: 100%; text-align: center; }
     .cell-data { font-size: 12px; color: #334155; margin: 0; line-height: 1.1; }
+    
+    /* --- MEJORA DE PESTAÑAS (TABS) --- */
+    button[data-baseweb="tab"] {
+        background-color: #f1f5f9 !important; /* Gris suave para inactiva */
+        border-radius: 5px 5px 0 0 !important;
+        margin-right: 5px !important;
+        padding: 10px 20px !important;
+        border: 1px solid #e2e8f0 !important;
+        border-bottom: none !important;
+    }
+    
+    button[data-baseweb="tab"][aria-selected="true"] {
+        background-color: #ffffff !important; /* Blanco para activa */
+        border-top: 3px solid #ef4444 !important; /* Línea roja superior */
+        font-weight: bold !important;
+        color: #ef4444 !important;
+    }
+
+    button[data-baseweb="tab"] p {
+        font-size: 16px !important; /* Texto más grande y legible */
+    }
+    /* ---------------------------------- */
+
     #MainMenu, footer, header {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
@@ -256,14 +283,12 @@ if st.session_state.seccion == "Menu":
         st.rerun()
     st.stop()
 
-# 6. PANEL DE CARGA
-# (Reemplaza desde donde empieza la Sección 6 en tu código)
-
+# 6. PANEL DE CARGA (REEMPLAZO COMPLETO)
 # Creamos dos columnas para los botones de navegación y salida
 col_nav, col_exit = st.columns([1, 1])
 
 with col_nav:
-    if st.button("⬅️ Menú", use_container_width=True):
+    if st.button("⬅️ Menú Principal", use_container_width=True):
         cambiar_seccion("Menu")
         st.rerun()
 
@@ -275,6 +300,7 @@ with col_exit:
 
 st.subheader(f"📍 Sector: {st.session_state.seccion}")
 
+# Diccionario de ítems por sector
 listas = {
     "Materiales": [
         "13008 | CONTROL REMOTO PARA DECO SAGECOM DCWMI303. CON BOTONES YT + NETFLIX",
@@ -312,6 +338,7 @@ listas = {
 }
 items = listas.get(st.session_state.seccion, [])
 
+# Uso de TABS con el CSS aplicado arriba
 tab1, tab2 = st.tabs(["📝 REGISTRAR", "📋 RESUMEN"])
 
 with tab1:
@@ -363,7 +390,7 @@ with tab2:
             r2.markdown(f'<div class="cell-data" style="color:blue; padding-top:5px;">{item["Codigo"]}</div>', unsafe_allow_html=True)
             m_txt = f" - <span style='color:orange;'>{item['Motivo']}</span>" if item['Motivo'] else ""
             r3.markdown(f'<div class="cell-data" style="padding-top:5px;">{item["Articulo"]}{m_txt}</div>', unsafe_allow_html=True)
-            if r4.button(".", key=f"del_{idx}", use_container_width=True):
+            if r4.button("❌", key=f"del_{idx}", use_container_width=True):
                 st.session_state.carrito.pop(idx)
                 st.rerun()
         
@@ -376,7 +403,7 @@ with tab2:
             else:
                 with st.spinner("Enviando pedido de forma segura..."):
                     try:
-                        # 1. ENVÍO AL FORMULARIO DE GOOGLE (Central de datos segura)
+                        # 1. ENVÍO AL FORMULARIO DE GOOGLE
                         URL_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSeNGtbC5IpMWrarbt_1GQS82aOZ4V3henxp5_NRP4vOwrss4g/formResponse"
                         headers = {"Content-Type": "application/x-www-form-urlencoded"}
                         
@@ -402,7 +429,6 @@ with tab2:
                         # 2. BLOQUEO DE SEGURIDAD (Solo si es Materiales)
                         if exito_envio and st.session_state.seccion == "Materiales":
                             try:
-                                # Leemos, marcamos y subimos (Esto es rápido, minimiza el riesgo)
                                 df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
                                 df_auth['DNI'] = df_auth['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
                                 df_auth.loc[df_auth['DNI'] == str(dni_actual), 'Estado'] = "bloqueado"
