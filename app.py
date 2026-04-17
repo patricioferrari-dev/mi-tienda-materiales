@@ -226,7 +226,7 @@ if st.session_state.seccion == "Menu":
                         if st.button("🧼\nLIMPIEZA", use_container_width=True): cambiar_seccion("Insumos_Limpieza"); st.rerun()
                     elif sector == "Materiales":
                         try:
-                            df_auth = conn.read(worksheet="Autorizaciones", ttl=0).dropna(how='all')
+                           df_auth = conn.read(worksheet="Autorizaciones", ttl=0, show_spinner=False).dropna(how='all')
                             autorizado = False
                             for _, row in df_auth.iterrows():
                                 if limpiar_dni(row['DNI']) == dni_actual and str(row.get('Estado', '')).lower() == "ok":
@@ -405,7 +405,7 @@ with tab2:
                             nombre_hoja = st.session_state.seccion
                             
                             # Leemos la hoja actual
-                            df_destino = conn.read(worksheet=nombre_hoja, ttl=0).dropna(how='all')
+                            df_destino = conn.read(worksheet=nombre_hoja, ttl=0, show_spinner=False).dropna(how='all')
                             
                             # Convertimos el carrito actual en un DataFrame
                             nuevo_pedido_df = pd.DataFrame(st.session_state.carrito)
