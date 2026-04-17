@@ -256,8 +256,22 @@ if st.session_state.seccion == "Menu":
     st.stop()
 
 # 6. PANEL DE CARGA
-# (El resto de tu código de listas e interfaz sigue aquí...)
-st.button("⬅️ Menú", on_click=lambda: cambiar_seccion("Menu"))
+# (Reemplaza desde donde empieza la Sección 6 en tu código)
+
+# Creamos dos columnas para los botones de navegación y salida
+col_nav, col_exit = st.columns([1, 1])
+
+with col_nav:
+    if st.button("⬅️ Menú", use_container_width=True):
+        cambiar_seccion("Menu")
+        st.rerun()
+
+with col_exit:
+    if st.button("🚪 Cerrar Sesión", use_container_width=True):
+        st.session_state.autenticado = False
+        st.session_state.datos_usuario = None
+        st.rerun()
+
 st.subheader(f"📍 Sector: {st.session_state.seccion}")
 
 listas = {
